@@ -1,0 +1,401 @@
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import { ArrowLeft, Heart, Eye, Code, Edit, AlertTriangle, MessageSquare, Play, FileText, Lock, ShoppingCart } from 'lucide-react';
+import { Button } from '../../ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
+import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Badge } from '../../ui/badge';
+import { Separator } from '../../ui/separator';
+import { Textarea } from '../../ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../ui/dialog';
+import { Label } from '../../ui/label';
+import { RadioGroup, RadioGroupItem } from '../../ui/radio-group';
+import { toast } from 'sonner';
+import { useAuthStore } from '../../../utils/authStore';
+import type { Material, Comment } from '../../../types';
+
+// Mock data
+const mockMaterial: Material = {
+  id: '1',
+  code: 'FUYI5K',
+  title: 'Từ vựng IELTS',
+  description: 'Bộ từ vựng IELTS cơ bản cho người mới bắt đầu, bao gồm các chủ đề thường gặp trong kỳ thi.',
+  authorId: 'user2',
+  authorName: 'User001',
+  authorEmail: 'User001@gmail.com',
+  isPublic: true,
+  price: 0,
+  flashcards: [
+    {
+      id: 'f1',
+      term: 'Academic',
+      definition: 'Thuộc về học thuật',
+    },
+    {
+      id: 'f2',
+      term: 'Achievement',
+      definition: 'Thành tựu, thành tích',
+    },
+  ],
+  quizzes: [],
+  likes: 0,
+  views: 0,
+  comments: [],
+  isPurchased: false,
+  createdAt: '2024-01-15',
+  updatedAt: '2024-01-15',
+};
+
+export function MaterialDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+  
+  const [material, setMaterial] = useState<Material>(mockMaterial);
+  const [isLiked, setIsLiked] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [reportReason, setReportReason] = useState('');
+  const [showPayment, setShowPayment] = useState(false);
+
+  const isOwner = material.authorId === user?.id;
+  const needsPurchase = material.price > 0 && !material.isPurchased && !isOwner;
+
+  const handleLike = () => {
+    setIsLiked(!isLiked);
+    setMaterial({
+      ...material,
+      likes: isLiked ? material.likes - 1 : material.likes + 1,
+    });
+    toast.success(isLiked ? 'Đã bỏ thích' : 'Đã thích học liệu này');
+  };
+
+  const handleComment = () => {
+    if (!commentText.trim()) return;
+
+    const newComment: Comment = {
+      id: Date.now().toString(),
+      userId: user?.id || '',
+      userName: user?.name || '',
+      content: commentText,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMaterial({
+      ...material,
+      comments: [newComment, ...material.comments],
+    });
+    setCommentText('');
+    toast.success('Đã thêm nhận xét');
+  };
+
+  const handleReport = (reason: string) => {
+    if (!reason) {
+      toast.error('Vui lòng chọn lý do báo cáo');
+      return;
+    }
+    toast.success('Đã gửi báo cáo vi phạm. Admin sẽ xem xét trong thời gian sớm nhất.');
+  };
+
+  const handlePurchase = () => {
+    // Mock payment
+    setMaterial({ ...material, isPurchased: true });
+    setShowPayment(false);
+    toast.success('Thanh toán thành công! Bạn có thể truy cập học liệu ngay bây giờ.');
+  };
+
+  const handleStartFlashcards = () => {
+    if (needsPurchase) {
+      setShowPayment(true);
+      return;
+    }
+    navigate(`/materials/${id}/flashcards`);
+  };
+
+  const handleStartQuiz = () => {
+    if (needsPurchase) {
+      setShowPayment(true);
+      return;
+    }
+    navigate(`/materials/${id}/quiz`);
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-6 max-w-5xl">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-6">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate('/materials')}
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-2xl">{material.title}</h1>
+              <Badge variant="secondary" className="gap-1">
+                <Code className="w-3 h-3" />
+                {material.code}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Avatar className="w-6 h-6">
+                  <AvatarFallback className="text-xs">
+                    {material.authorName[0].toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span>{material.authorEmail}</span>
+              </div>
+              <span className="flex items-center gap-1">
+                <Eye className="w-4 h-4" />
+                {material.views} lượt xem
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isOwner ? (
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/materials/${id}/edit`)}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Chỉnh sửa
+              </Button>
+            ) : (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <AlertTriangle className="w-4 h-4 mr-2" />
+                    Báo cáo vi phạm
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Báo cáo vi phạm</DialogTitle>
+                    <DialogDescription>
+                      Vui lòng chọn lý do báo cáo học liệu này
+                    </DialogDescription>
+                  </DialogHeader>
+                  <RadioGroup value={reportReason} onValueChange={setReportReason}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="spam" id="spam" />
+                      <Label htmlFor="spam">Spam hoặc quảng cáo</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="inappropriate" id="inappropriate" />
+                      <Label htmlFor="inappropriate">Nội dung không phù hợp</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="copyright" id="copyright" />
+                      <Label htmlFor="copyright">Vi phạm bản quyền</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="misleading" id="misleading" />
+                      <Label htmlFor="misleading">Thông tin sai lệch</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="other" id="other" />
+                      <Label htmlFor="other">Khác</Label>
+                    </div>
+                  </RadioGroup>
+                  <DialogFooter>
+                    <Button onClick={() => handleReport(reportReason)}>
+                      Gửi báo cáo
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+            <Button
+              variant={isLiked ? 'default' : 'outline'}
+              onClick={handleLike}
+            >
+              <Heart className={`w-4 h-4 mr-2 ${isLiked ? 'fill-current' : ''}`} />
+              {material.likes}
+            </Button>
+          </div>
+        </div>
+
+        {/* Price & Status */}
+        {material.price > 0 && !isOwner && (
+          <Card className="mb-6 bg-primary/5 border-primary/20">
+            <CardContent className="flex items-center justify-between p-6">
+              <div className="flex items-center gap-3">
+                {needsPurchase ? (
+                  <>
+                    <Lock className="w-8 h-8 text-primary" />
+                    <div>
+                      <p className="font-semibold">Học liệu có phí</p>
+                      <p className="text-sm text-muted-foreground">
+                        Mua để truy cập toàn bộ nội dung
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-8 h-8 text-success" />
+                    <div>
+                      <p className="font-semibold text-success">Đã mua học liệu</p>
+                      <p className="text-sm text-muted-foreground">
+                        Bạn có thể truy cập toàn bộ nội dung
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              {needsPurchase && (
+                <Button size="lg" onClick={() => setShowPayment(true)}>
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  Mua ngay - {material.price.toLocaleString()}đ
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Description */}
+        {material.description && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Mô tả</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">{material.description}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Content Actions */}
+        <div className="grid md:grid-cols-2 gap-4 mb-6">
+          {material.flashcards.length > 0 && (
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleStartFlashcards}>
+              <CardContent className="flex items-center gap-4 p-6">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <FileText className="w-6 h-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold mb-1">Thẻ ghi nhớ</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {material.flashcards.length} thẻ
+                  </p>
+                </div>
+                {needsPurchase && <Lock className="w-5 h-5 text-muted-foreground" />}
+              </CardContent>
+            </Card>
+          )}
+
+          {material.quizzes.length > 0 && (
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleStartQuiz}>
+              <CardContent className="flex items-center gap-4 p-6">
+                <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
+                  <Play className="w-6 h-6 text-success" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold mb-1">Làm test</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {material.quizzes.length} câu hỏi
+                  </p>
+                </div>
+                {needsPurchase && <Lock className="w-5 h-5 text-muted-foreground" />}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Comments Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Nhận xét ({material.comments.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Add Comment */}
+            <div className="space-y-2">
+              <Textarea
+                placeholder="Viết nhận xét của bạn..."
+                rows={3}
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+              />
+              <Button onClick={handleComment} disabled={!commentText.trim()}>
+                Gửi nhận xét
+              </Button>
+            </div>
+
+            <Separator />
+
+            {/* Comments List */}
+            {material.comments.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                Chưa có nhận xét nào
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {material.comments.map((comment) => (
+                  <div key={comment.id} className="flex gap-3">
+                    <Avatar className="w-8 h-8">
+                      <AvatarFallback className="text-xs">
+                        {comment.userName[0].toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-sm">
+                          {comment.userName}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(comment.createdAt).toLocaleDateString('vi-VN')}
+                        </span>
+                      </div>
+                      <p className="text-sm">{comment.content}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Payment Dialog */}
+        <Dialog open={showPayment} onOpenChange={setShowPayment}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Thanh toán học liệu</DialogTitle>
+              <DialogDescription>
+                Hoàn tất thanh toán để truy cập học liệu
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <span>Học liệu:</span>
+                <span className="font-semibold">{material.title}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Giá:</span>
+                <span className="text-xl font-semibold text-primary">
+                  {material.price.toLocaleString()}đ
+                </span>
+              </div>
+              <Separator />
+              <p className="text-sm text-muted-foreground">
+                * Sau khi thanh toán, bạn sẽ có quyền truy cập vĩnh viễn vào học liệu này.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowPayment(false)}>
+                Hủy
+              </Button>
+              <Button onClick={handlePurchase}>
+                Xác nhận thanh toán
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+}
