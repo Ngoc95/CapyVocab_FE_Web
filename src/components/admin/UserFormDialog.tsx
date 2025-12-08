@@ -18,18 +18,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { AdminUser } from '../../utils/adminStore';
+import { User } from '../../services/userService';
 import { Flame, Calendar, Wallet } from 'lucide-react';
 
 interface UserFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user?: AdminUser;
+  user?: User;
   onSubmit: (user: {
-    name: string;
+    username: string;
     email: string;
+    password?: string;
     avatar?: string;
-    role: 'admin' | 'user';
+    roleId: number;
+    status?: 'NOT_VERIFIED' | 'VERIFIED';
   }) => void;
 }
 
@@ -39,22 +41,28 @@ export function UserFormDialog({
   user,
   onSubmit,
 }: UserFormDialogProps) {
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [avatar, setAvatar] = useState('');
-  const [role, setRole] = useState<'admin' | 'user'>('user');
+  const [roleId, setRoleId] = useState<number>(user?.role.id ?? 1); // Default to USER role (1)
+  const [status, setStatus] = useState<'NOT_VERIFIED' | 'VERIFIED'>('NOT_VERIFIED');
 
   useEffect(() => {
     if (user) {
-      setName(user.name);
+      setUsername(user.username);
       setEmail(user.email);
       setAvatar(user.avatar || '');
-      setRole(user.role);
+      setRoleId(user.role.id ?? 1);
+      setStatus(user.status);
+      setPassword(''); // Don't show password when editing
     } else {
-      setName('');
+      setUsername('');
       setEmail('');
+      setPassword('');
       setAvatar('');
-      setRole('user');
+      setRoleId(1); // Default to USER
+      setStatus('NOT_VERIFIED');
     }
   }, [user, open]);
 
@@ -82,10 +90,12 @@ export function UserFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
-      name,
+      username,
       email,
+      password: user ? undefined : password, // Only require password for new users
       avatar: avatar || undefined,
-      role,
+      roleId,
+      status: user ? status : undefined, // Only set status when editing
     });
     onOpenChange(false);
   };
@@ -106,14 +116,20 @@ export function UserFormDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Họ tên *</Label>
+              <Label htmlFor="username">Username *</Label>
               <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ví dụ: Nguyễn Văn A"
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Ví dụ: username123 (5-20 ký tự, chỉ chữ và số)"
                 required
+                minLength={5}
+                maxLength={20}
+                pattern="[a-zA-Z0-9]+"
               />
+              <p className="text-xs text-muted-foreground">
+                5-20 ký tự, chỉ chữ và số
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -127,6 +143,24 @@ export function UserFormDialog({
                 required
               />
             </div>
+
+            {!user && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Mật khẩu *</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Tối thiểu 6 ký tự, có ít nhất 1 chữ hoa"
+                  required
+                  minLength={6}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Tối thiểu 6 ký tự, có ít nhất 1 chữ hoa
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Avatar</Label>
@@ -178,23 +212,41 @@ export function UserFormDialog({
             <div className="space-y-2">
               <Label htmlFor="role">Vai trò *</Label>
               <Select
-                value={role}
-                onValueChange={(value) => setRole(value as 'admin' | 'user')}
+                value={String(roleId)}
+                onValueChange={(value) => setRoleId(Number(value))}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Chọn vai trò" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="1">ADMIN</SelectItem>
+                  <SelectItem value="2">USER</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
+            {user && (
+              <div className="space-y-2">
+                <Label htmlFor="status">Trạng thái</Label>
+                <Select
+                  value={status}
+                  onValueChange={(value) => setStatus(value as 'NOT_VERIFIED' | 'VERIFIED')}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Chọn trạng thái" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NOT_VERIFIED">Chưa xác thực</SelectItem>
+                    <SelectItem value="VERIFIED">Đã xác thực</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Readonly fields - only show when editing */}
             {user && (
               <div className="space-y-3 pt-2 border-t">
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <Flame className="w-4 h-4" />
@@ -208,7 +260,7 @@ export function UserFormDialog({
                       <Wallet className="w-4 h-4" />
                       <span>Số dư</span>
                     </div>
-                    <p className="font-medium">{user.balance.toLocaleString('vi-VN')} đ</p>
+                    <p className="font-medium">{Number(user.balance ?? 0).toLocaleString('vi-VN')} đ</p>
                   </div>
                   
                   <div className="space-y-1">

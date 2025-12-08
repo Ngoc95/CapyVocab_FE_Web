@@ -19,23 +19,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { AdminWord, useAdminStore } from '../../utils/adminStore';
+import { Word, WordPosition } from '../../services/wordService';
+import { topicService, Topic } from '../../services/topicService';
 
 interface GeneralWordFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  word?: AdminWord;
+  word?: Word;
   onSubmit: (word: {
-    word: string;
-    phonetic: string;
-    translation: string;
-    partOfSpeech: string;
-    example: string;
-    exampleTranslation: string;
-    level: 1 | 2 | 3 | 4;
-    topicId: string;
+    content: string;
+    pronunciation: string;
+    meaning: string;
+    position?: WordPosition;
+    audio?: string;
     image?: string;
-    audioUrl?: string;
+    example?: string;
+    translateExample?: string;
+    topicIds?: number[];
   }) => void;
 }
 
@@ -45,50 +45,61 @@ export function GeneralWordFormDialog({
   word,
   onSubmit,
 }: GeneralWordFormDialogProps) {
-  const { topics } = useAdminStore();
-  const [wordText, setWordText] = useState('');
-  const [phonetic, setPhonetic] = useState('');
-  const [translation, setTranslation] = useState('');
-  const [partOfSpeech, setPartOfSpeech] = useState('noun');
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [content, setContent] = useState('');
+  const [pronunciation, setPronunciation] = useState('');
+  const [meaning, setMeaning] = useState('');
+  const [position, setPosition] = useState<WordPosition>('Others');
   const [example, setExample] = useState('');
-  const [exampleTranslation, setExampleTranslation] = useState('');
-  const [topicId, setTopicId] = useState('');
+  const [translateExample, setTranslateExample] = useState('');
+  const [selectedTopicIds, setSelectedTopicIds] = useState<number[]>([]);
   const [image, setImage] = useState('');
-  const [audioUrl, setAudioUrl] = useState('');
+  const [audio, setAudio] = useState('');
+
+  // Fetch topics
+  useEffect(() => {
+    if (open) {
+      topicService.getTopics({ limit: 1000 })
+        .then((response) => {
+          setTopics(response.metaData.topics);
+        })
+        .catch((err) => {
+          console.error('Error fetching topics:', err);
+        });
+    }
+  }, [open]);
 
   useEffect(() => {
     if (word) {
-      setWordText(word.word);
-      setPhonetic(word.phonetic);
-      setTranslation(word.translation);
-      setPartOfSpeech(word.partOfSpeech);
-      setExample(word.example);
-      setExampleTranslation(word.exampleTranslation);
-      setTopicId(word.topicId || 'none');
+      setContent(word.content);
+      setPronunciation(word.pronunciation);
+      setMeaning(word.meaning);
+      setPosition(word.position);
+      setExample(word.example || '');
+      setTranslateExample(word.translateExample || '');
+      setSelectedTopicIds(word.topics?.map(t => t.id) || []);
       setImage(word.image || '');
-      setAudioUrl(word.audioUrl || '');
+      setAudio(word.audio || '');
     } else {
-      setWordText('');
-      setPhonetic('');
-      setTranslation('');
-      setPartOfSpeech('noun');
+      setContent('');
+      setPronunciation('');
+      setMeaning('');
+      setPosition('Others');
       setExample('');
-      setExampleTranslation('');
-      setTopicId('none');
+      setTranslateExample('');
+      setSelectedTopicIds([]);
       setImage('');
-      setAudioUrl('');
+      setAudio('');
     }
   }, [word, open]);
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check if file is an image
       if (!file.type.startsWith('image/')) {
         alert('Vui lòng chọn file hình ảnh');
         return;
       }
-      // Check file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert('Kích thước file không được vượt quá 5MB');
         return;
@@ -104,19 +115,17 @@ export function GeneralWordFormDialog({
   const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check if file is audio
       if (!file.type.startsWith('audio/')) {
         alert('Vui lòng chọn file âm thanh');
         return;
       }
-      // Check file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
         alert('Kích thước file không được vượt quá 10MB');
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setAudioUrl(reader.result as string);
+        setAudio(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -125,18 +134,25 @@ export function GeneralWordFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
-      word: wordText,
-      phonetic,
-      translation,
-      partOfSpeech,
-      example,
-      exampleTranslation,
-      level: 1, // Default level
-      topicId: topicId === 'none' ? '' : topicId,
+      content,
+      pronunciation,
+      meaning,
+      position,
+      example: example || undefined,
+      translateExample: translateExample || undefined,
       image: image || undefined,
-      audioUrl: audioUrl || undefined,
+      audio: audio || undefined,
+      topicIds: selectedTopicIds.length > 0 ? selectedTopicIds : undefined,
     });
     onOpenChange(false);
+  };
+
+  const toggleTopic = (topicId: number) => {
+    setSelectedTopicIds((prev) =>
+      prev.includes(topicId)
+        ? prev.filter((id) => id !== topicId)
+        : [...prev, topicId]
+    );
   };
 
   return (
@@ -156,99 +172,107 @@ export function GeneralWordFormDialog({
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="word">Từ vựng *</Label>
+                <Label htmlFor="content">Từ vựng *</Label>
                 <Input
-                  id="word"
-                  value={wordText}
-                  onChange={(e) => setWordText(e.target.value)}
+                  id="content"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
                   placeholder="Ví dụ: Hello"
                   required
+                  maxLength={255}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phonetic">Phiên âm *</Label>
+                <Label htmlFor="pronunciation">Phiên âm *</Label>
                 <Input
-                  id="phonetic"
-                  value={phonetic}
-                  onChange={(e) => setPhonetic(e.target.value)}
+                  id="pronunciation"
+                  value={pronunciation}
+                  onChange={(e) => setPronunciation(e.target.value)}
                   placeholder="Ví dụ: /həˈloʊ/"
                   required
+                  maxLength={255}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="translation">Dịch nghĩa *</Label>
+              <Label htmlFor="meaning">Dịch nghĩa *</Label>
               <Input
-                id="translation"
-                value={translation}
-                onChange={(e) => setTranslation(e.target.value)}
+                id="meaning"
+                value={meaning}
+                onChange={(e) => setMeaning(e.target.value)}
                 placeholder="Ví dụ: Xin chào"
                 required
+                maxLength={255}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="partOfSpeech">Loại từ *</Label>
-                <Select value={partOfSpeech} onValueChange={setPartOfSpeech}>
+                <Label htmlFor="position">Loại từ</Label>
+                <Select value={position} onValueChange={(v) => setPosition(v as WordPosition)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="noun">Noun (Danh từ)</SelectItem>
-                    <SelectItem value="verb">Verb (Động từ)</SelectItem>
-                    <SelectItem value="adjective">Adjective (Tính từ)</SelectItem>
-                    <SelectItem value="adverb">Adverb (Trạng từ)</SelectItem>
-                    <SelectItem value="pronoun">Pronoun (Đại từ)</SelectItem>
-                    <SelectItem value="preposition">Preposition (Giới từ)</SelectItem>
-                    <SelectItem value="conjunction">Conjunction (Liên từ)</SelectItem>
-                    <SelectItem value="interjection">Interjection (Thán từ)</SelectItem>
-                    <SelectItem value="phrase">Phrase (Cụm từ)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="topicId">Chủ đề</Label>
-                <Select value={topicId} onValueChange={setTopicId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn chủ đề (tùy chọn)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Chưa gán chủ đề</SelectItem>
-                    {topics.map((topic) => (
-                      <SelectItem key={topic.id} value={topic.id}>
-                        {topic.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="Noun">Noun (Danh từ)</SelectItem>
+                    <SelectItem value="Verb">Verb (Động từ)</SelectItem>
+                    <SelectItem value="Adjective">Adjective (Tính từ)</SelectItem>
+                    <SelectItem value="Adverb">Adverb (Trạng từ)</SelectItem>
+                    <SelectItem value="Others">Others (Khác)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="example">Ví dụ *</Label>
+              <Label>Chủ đề (có thể chọn nhiều)</Label>
+              <div className="border rounded-lg p-3 max-h-40 overflow-y-auto">
+                {topics.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Đang tải...</p>
+                ) : (
+                  <div className="space-y-2">
+                    {topics.map((topic) => (
+                      <label
+                        key={topic.id}
+                        className="flex items-center space-x-2 cursor-pointer hover:bg-muted/50 p-2 rounded"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTopicIds.includes(topic.id)}
+                          onChange={() => toggleTopic(topic.id)}
+                          className="rounded"
+                        />
+                        <span className="text-sm">{topic.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="example">Ví dụ</Label>
               <Textarea
                 id="example"
                 value={example}
                 onChange={(e) => setExample(e.target.value)}
                 placeholder="Ví dụ: Hello! How are you?"
                 rows={2}
-                required
+                maxLength={255}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="exampleTranslation">Dịch ví dụ *</Label>
+              <Label htmlFor="translateExample">Dịch ví dụ</Label>
               <Textarea
-                id="exampleTranslation"
-                value={exampleTranslation}
-                onChange={(e) => setExampleTranslation(e.target.value)}
+                id="translateExample"
+                value={translateExample}
+                onChange={(e) => setTranslateExample(e.target.value)}
                 placeholder="Ví dụ: Xin chào! Bạn khỏe không?"
                 rows={2}
-                required
+                maxLength={255}
               />
             </div>
 
@@ -309,8 +333,8 @@ export function GeneralWordFormDialog({
                 </TabsList>
                 <TabsContent value="url" className="space-y-2">
                   <Input
-                    value={audioUrl}
-                    onChange={(e) => setAudioUrl(e.target.value)}
+                    value={audio}
+                    onChange={(e) => setAudio(e.target.value)}
                     placeholder="https://example.com/audio.mp3"
                   />
                 </TabsContent>
@@ -325,17 +349,17 @@ export function GeneralWordFormDialog({
                   </p>
                 </TabsContent>
               </Tabs>
-              {audioUrl && (
+              {audio && (
                 <div className="mt-2">
                   <audio controls className="w-full h-10">
-                    <source src={audioUrl} />
+                    <source src={audio} />
                     Trình duyệt không hỗ trợ audio.
                   </audio>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setAudioUrl('')}
+                    onClick={() => setAudio('')}
                     className="mt-1"
                   >
                     Xóa âm thanh

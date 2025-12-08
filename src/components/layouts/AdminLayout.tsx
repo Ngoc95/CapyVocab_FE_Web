@@ -37,8 +37,8 @@ export function AdminLayout() {
     { path: '/admin/support', icon: HelpCircle, label: 'Hỗ trợ' },
   ];
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 

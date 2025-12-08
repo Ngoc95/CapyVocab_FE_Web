@@ -18,19 +18,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { AdminCourse } from '../../utils/adminStore';
+import { Course, CourseLevel } from '../../services/courseService';
 
 interface CourseFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  course?: AdminCourse;
+  course?: Course;
   onSubmit: (course: {
-    name: string;
-    description: string;
-    level: string;
-    price: number;
-    thumbnail?: string;
-    status: 'Published' | 'Draft';
+    title: string;
+    level: CourseLevel;
+    target?: string;
+    description?: string;
+    topics?: Array<{ id: number; displayOrder: number }>;
   }) => void;
 }
 
@@ -40,40 +39,32 @@ export function CourseFormDialog({
   course,
   onSubmit,
 }: CourseFormDialogProps) {
-  const [name, setName] = useState('');
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [level, setLevel] = useState('Beginner');
-  const [price, setPrice] = useState(0);
-  const [thumbnail, setThumbnail] = useState('');
-  const [status, setStatus] = useState<'Published' | 'Draft'>('Published');
+  const [level, setLevel] = useState<CourseLevel>('Beginner');
+  const [target, setTarget] = useState('');
 
   useEffect(() => {
     if (course) {
-      setName(course.name);
-      setDescription(course.description);
+      setTitle(course.title);
+      setDescription(course.description || '');
       setLevel(course.level);
-      setPrice(course.price);
-      setThumbnail(course.thumbnail || '');
-      setStatus(course.status);
+      setTarget(course.target || '');
     } else {
-      setName('');
+      setTitle('');
       setDescription('');
       setLevel('Beginner');
-      setPrice(0);
-      setThumbnail('');
-      setStatus('Published');
+      setTarget('');
     }
   }, [course, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
-      name,
-      description,
+      title,
       level,
-      price,
-      thumbnail: thumbnail || undefined,
-      status,
+      description: description || undefined,
+      target: target || undefined,
     });
     onOpenChange(false);
   };
@@ -94,68 +85,52 @@ export function CourseFormDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Tên khóa học *</Label>
+              <Label htmlFor="title">Tên khóa học *</Label>
               <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ví dụ: IELTS Foundation"
                 required
+                maxLength={255}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Mô tả *</Label>
+              <Label htmlFor="description">Mô tả</Label>
               <Textarea
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Mô tả chi tiết về khóa học..."
                 rows={3}
-                required
+                maxLength={255}
               />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="level">Cấp độ *</Label>
-                <Select value={level} onValueChange={setLevel}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Beginner">Beginner</SelectItem>
-                    <SelectItem value="Intermediate">Intermediate</SelectItem>
-                    <SelectItem value="Advanced">Advanced</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="status">Trạng thái *</Label>
-                <Select
-                  value={status}
-                  onValueChange={(v) => setStatus(v as 'Published' | 'Draft')}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Published">Published</SelectItem>
-                    <SelectItem value="Draft">Draft</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="thumbnail">Thumbnail (emoji)</Label>
+              <Label htmlFor="target">Đối tượng</Label>
               <Input
-                id="thumbnail"
-                value={thumbnail}
-                onChange={(e) => setThumbnail(e.target.value)}
-                placeholder="Ví dụ: 📚"
+                id="target"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder="Ví dụ: Beginner learners"
+                maxLength={255}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="level">Cấp độ *</Label>
+              <Select value={level} onValueChange={(v) => setLevel(v as CourseLevel)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Beginner">Beginner</SelectItem>
+                  <SelectItem value="Intermediate">Intermediate</SelectItem>
+                  <SelectItem value="Advance">Advance</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
