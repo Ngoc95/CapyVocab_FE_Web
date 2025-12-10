@@ -78,19 +78,6 @@ export function CreatePostDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* User Info */}
-          <div className="flex items-center gap-3">
-            <Avatar className="w-10 h-10">
-              <AvatarImage
-                src="https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop"
-                alt="User"
-              />
-              <AvatarFallback>U</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="text-gray-900">User001</p>
-            </div>
-          </div>
 
           {/* Content Input */}
           <Textarea

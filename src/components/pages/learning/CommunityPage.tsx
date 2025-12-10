@@ -240,8 +240,8 @@ export function CommunityPage() {
         {/* Create Post Box */}
         <CreatePostBox 
           onClick={() => setIsCreatePostOpen(true)}
-          userAvatar="https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop"
-          userName="User001"
+          userAvatar={user?.avatar || ''}
+          userName={user?.name || ''}
         />
 
         {/* Active Filters */}

@@ -60,7 +60,7 @@ export const postService = {
   },
   uploadImages: async (files: File[]): Promise<string[]> => {
     const fd = new FormData();
-    files.forEach((f) => fd.append('images', f));
+    files.forEach((f) => fd.append('AVATAR', f));
     const res = await apiUpload<{ urls: string[] }>('upload/images', fd);
     return res.metaData.urls || [];
   },

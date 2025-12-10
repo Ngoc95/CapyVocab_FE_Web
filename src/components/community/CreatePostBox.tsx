@@ -16,7 +16,7 @@ export function CreatePostBox({ onClick, userAvatar, userName = 'User' }: Create
       <div className="flex items-center gap-3">
         <Avatar className="w-10 h-10 flex-shrink-0">
           <AvatarImage src={userAvatar} alt={userName} />
-          <AvatarFallback>{userName.slice(0, 2)}</AvatarFallback>
+          <AvatarFallback>{userName[0]}</AvatarFallback>
         </Avatar>
         <div className="flex-1 bg-gray-100 rounded-full px-4 py-3 text-gray-500 hover:bg-gray-200 transition-colors">
           Bạn đang nghĩ gì?

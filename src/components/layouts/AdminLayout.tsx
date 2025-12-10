@@ -51,9 +51,9 @@ export function AdminLayout() {
       {/* Logo */}
       <div className="p-6 border-b">
         <Link to="/admin/dashboard" className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-            <span className="text-2xl">🦫</span>
-          </div>
+          
+            <img src="/app_icon.png" alt="App" className="w-8 h-8" />
+          
           <div>
             <h2 className="font-semibold">CapyVocab</h2>
             <Badge variant="outline" className="text-xs mt-1">Admin Panel</Badge>
@@ -138,9 +138,7 @@ export function AdminLayout() {
                   </Button>
                 </SheetTrigger>
               </Sheet>
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <span className="text-xl">🦫</span>
-              </div>
+              <img src="/app_icon.png" alt="App" className="w-8 h-8" />
               <span className="font-semibold">CapyVocab</span>
             </div>
             <Badge variant="outline">Admin</Badge>

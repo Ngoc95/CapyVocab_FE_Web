@@ -57,7 +57,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await authService.login({ username, password });
           const { user, accessToken, refreshToken } = response.metaData;
-
+          
           set({
             user: convertUser(user),
             accessToken,
@@ -65,7 +65,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             viewAsUser: false,
           });
-
+          console.log('Login successful:', user);
           return true;
         } catch (error: any) {
           console.error('Login error:', error);

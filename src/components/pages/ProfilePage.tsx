@@ -1,37 +1,40 @@
-import { useAppStore } from "../../utils/store";
-import { mockCourses, mockMarketplaceFolders } from "../../utils/mockData";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Avatar, AvatarFallback } from "../ui/avatar";
+import { useEffect, useState } from "react";
+import { Card, CardContent } from "../ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Badge } from "../ui/badge";
-import { User, BookOpen, Award, ShoppingBag, TrendingUp } from "lucide-react";
+import { User } from "lucide-react";
+import { useAuthStore } from "../../utils/authStore";
+import { postService } from "../../services/postService";
+import { authService } from "../../services/authService";
+import { toast } from "sonner";
 
 export function ProfilePage() {
-  const purchasedFolders = useAppStore((state) => state.purchasedFolders);
-  const userProgress = useAppStore((state) => state.userProgress);
-  const reviewItems = useAppStore((state) => state.reviewItems);
+  const { user, updateProfile } = useAuthStore();
+  const [displayName, setDisplayName] = useState(user?.username || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [avatar, setAvatar] = useState(user?.avatar || "");
+  const [roleName, setRoleName] = useState(user?.role || "USER");
+  const [status, setStatus] = useState<'NOT_VERIFIED' | 'VERIFIED' | undefined>(user?.status);
+  const [streak, setStreak] = useState<number | undefined>(user?.streak);
+  const [totalStudyDay, setTotalStudyDay] = useState<number | undefined>(undefined);
+  const [uploading, setUploading] = useState(false);
 
-  const allFolders = [
-    ...mockCourses.flatMap((c) => c.folders),
-    ...mockMarketplaceFolders,
-  ];
-
-  const myFolders = allFolders.filter((f) => purchasedFolders.includes(f.id));
-  const totalFlashcards = reviewItems.length;
-  const completedFolders = userProgress.filter(
-    (p) => p.completedFlashcards.length > 0
-  ).length;
-
-  // Mock user data
-  const user = {
-    name: "Nguyễn Văn A",
-    email: "nguyenvana@example.com",
-    joinDate: "15/01/2024",
-    level: "Intermediate",
-  };
-
-  const totalSpent = myFolders
-    .filter((f) => f.price > 0)
-    .reduce((sum, f) => sum + f.price, 0);
+  useEffect(() => {
+    authService.getAccount()
+      .then((res) => {
+        const u = res.metaData.user;
+        setDisplayName(u.username || "");
+        setEmail(u.email || "");
+        setAvatar(u.avatar || "");
+        setRoleName(u.role?.name || "USER");
+        setStatus(u.status);
+        setStreak(u.streak);
+        setTotalStudyDay(u.totalStudyDay);
+      })
+      .catch((e: any) => {
+        toast.error(e?.message || "Tải thông tin tài khoản thất bại");
+      });
+  }, []);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -44,14 +47,33 @@ export function ProfilePage() {
             <CardContent className="pt-6">
               <div className="text-center mb-6">
                 <Avatar className="w-24 h-24 mx-auto mb-4">
+                  <AvatarImage src={avatar} alt={displayName} />
                   <AvatarFallback className="text-2xl bg-blue-100 text-blue-600">
-                    {user.name.charAt(0)}
+                    {(displayName || "?").charAt(0)}
                   </AvatarFallback>
                 </Avatar>
-                <h2 className="mb-1">{user.name}</h2>
-                <p className="text-slate-600">{user.email}</p>
+                <div className="flex flex-col items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        setUploading(true);
+                        const urls = await postService.uploadImages([file]);
+                        const url = urls[0] || "";
+                        setAvatar(url);
+                        await updateProfile({ avatar: url });
+                      } catch {}
+                      finally { setUploading(false); }
+                    }}
+                  />
+                </div>
+                <h2 className="mb-1">{displayName}</h2>
+                <p className="text-slate-600">{email}</p>
                 <Badge variant="secondary" className="mt-3">
-                  {user.level}
+                  {roleName}
                 </Badge>
               </div>
               <div className="space-y-3 pt-6 border-t">
@@ -60,8 +82,39 @@ export function ProfilePage() {
                     <User className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
-                    <p className="text-sm text-slate-600">Tham gia</p>
-                    <p>{user.joinDate}</p>
+                    <p className="text-sm text-slate-600">Trạng thái</p>
+                    <p>{status === 'VERIFIED' ? 'Đã xác minh' : 'Chưa xác minh'}</p>
+                  </div>
+                </div>
+                <div className="space-y-2 mt-4">
+                  <label className="text-sm">Tên hiển thị</label>
+                  <input
+                    className="border rounded px-3 py-2 w-full"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                  <label className="text-sm">Email</label>
+                  <input
+                    className="border rounded px-3 py-2 w-full"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div className="text-sm text-slate-600">Chuỗi ngày học</div>
+                    <div>{streak ?? 0}</div>
+                    <div className="text-sm text-slate-600">Tổng ngày học</div>
+                    <div>{totalStudyDay ?? 0}</div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      className="px-4 py-2 rounded bg-blue-600 text-white"
+                      onClick={async () => {
+                        await updateProfile({ username: displayName, email });
+                      }}
+                      disabled={uploading}
+                    >
+                      Lưu thay đổi
+                    </button>
                   </div>
                 </div>
               </div>
@@ -69,96 +122,7 @@ export function ProfilePage() {
           </Card>
         </div>
 
-        {/* Stats */}
-        <div className="lg:col-span-2">
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm">Folders đã mua</CardTitle>
-                <BookOpen className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl">{myFolders.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  {myFolders.filter((f) => f.price === 0).length} miễn phí •{" "}
-                  {myFolders.filter((f) => f.price > 0).length} đã mua
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm">Flashcards</CardTitle>
-                <Award className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl">{totalFlashcards}</div>
-                <p className="text-xs text-muted-foreground">
-                  Tổng số flashcards đang học
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm">Folders hoàn thành</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl">{completedFolders}</div>
-                <p className="text-xs text-muted-foreground">
-                  Đã hoàn thành học tập
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm">Tổng chi tiêu</CardTitle>
-                <ShoppingBag className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl">{totalSpent.toLocaleString('vi-VN')}đ</div>
-                <p className="text-xs text-muted-foreground">
-                  Đã mua {myFolders.filter((f) => f.price > 0).length} folders
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Hoạt động gần đây</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {userProgress.slice(0, 5).map((progress) => {
-                  const folder = allFolders.find((f) => f.folderId === progress.folderId);
-                  if (!folder) return null;
-
-                  return (
-                    <div key={progress.folderId} className="flex items-center gap-4">
-                      <div className="w-2 h-2 bg-blue-600 rounded-full" />
-                      <div className="flex-1">
-                        <p className="text-sm">{folder.title}</p>
-                        <p className="text-xs text-slate-500">
-                          {progress.completedFlashcards.length} flashcards •{" "}
-                          {progress.completedQuizzes.length} quiz
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-                {userProgress.length === 0 && (
-                  <p className="text-slate-500 text-center py-4">
-                    Chưa có hoạt động nào
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <div className="lg:col-span-2" />
       </div>
     </div>
   );

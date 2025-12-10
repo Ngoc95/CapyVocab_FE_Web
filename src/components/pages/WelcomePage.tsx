@@ -108,9 +108,7 @@ export function WelcomePage() {
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between max-w-7xl">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-              <span className="text-2xl">🦫</span>
-            </div>
+            <img src="/app_icon.png" alt="App" className="w-8 h-8" />
             <span className="font-semibold text-xl">CapyVocab</span>
           </Link>
           <div className="flex items-center gap-4">
@@ -152,9 +150,7 @@ export function WelcomePage() {
               </div>
             </div>
             <div className="relative">
-              <div className="w-full aspect-square bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl flex items-center justify-center">
-                <span className="text-9xl">🦫</span>
-              </div>
+              <img src="/app_icon.png" alt="App" className="w-8 h-8" />
               <div className="absolute -bottom-6 -left-6 bg-card p-4 rounded-xl shadow-lg border">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
@@ -326,9 +322,7 @@ export function WelcomePage() {
           <div className="grid md:grid-cols-4 gap-8">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-                  <span className="text-2xl">🦫</span>
-                </div>
+                <img src="/app_icon.png" alt="App" className="w-8 h-8" />
                 <span className="font-semibold text-xl">CapyVocab</span>
               </div>
               <p className="text-sm text-muted-foreground">

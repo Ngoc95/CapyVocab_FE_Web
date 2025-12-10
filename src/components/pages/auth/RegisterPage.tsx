@@ -112,8 +112,8 @@ export function RegisterPage() {
       <div className="w-full max-w-md space-y-8">
         {/* Logo & Welcome */}
         <div className="text-center space-y-4">
-          <div className="w-24 h-24 bg-primary rounded-3xl flex items-center justify-center mx-auto shadow-lg">
-            <span className="text-6xl">🦫</span>
+          <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto shadow-lg">
+            <img src="/app_icon.png" alt="App" className="w-24 h-24" />
           </div>
           <div>
             <h1 className="text-3xl font-bold">Tham gia CapyVocab</h1>
@@ -227,21 +227,8 @@ export function RegisterPage() {
                 )}
               </div>
 
-              <div className="flex items-start gap-2">
-                <input type="checkbox" className="mt-1 rounded" required />
-                <p className="text-sm text-muted-foreground">
-                  Tôi đồng ý với{' '}
-                  <Link to="/terms" className="text-primary hover:underline">
-                    Điều khoản dịch vụ
-                  </Link>{' '}
-                  và{' '}
-                  <Link to="/privacy" className="text-primary hover:underline">
-                    Chính sách bảo mật
-                  </Link>
-                </p>
-              </div>
             </CardContent>
-            <CardFooter className="flex flex-col gap-4">
+            <CardFooter className="flex flex-col gap-4 py-4">
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
                   <>
