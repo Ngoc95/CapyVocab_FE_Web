@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
 import { Button } from '../../ui/button';
@@ -6,30 +6,8 @@ import { Card, CardContent } from '../../ui/card';
 import { Progress } from '../../ui/progress';
 import { motion, AnimatePresence } from 'motion/react';
 
-// Mock data - in real app, fetch based on material ID
-const mockFlashcards = [
-  {
-    id: 'f1',
-    term: 'Academic',
-    definition: 'Thuộc về học thuật',
-    frontImage: undefined,
-    backImage: undefined,
-  },
-  {
-    id: 'f2',
-    term: 'Achievement',
-    definition: 'Thành tựu, thành tích',
-    frontImage: undefined,
-    backImage: undefined,
-  },
-  {
-    id: 'f3',
-    term: 'Approach',
-    definition: 'Cách tiếp cận, phương pháp',
-    frontImage: undefined,
-    backImage: undefined,
-  },
-];
+import { exerciseService } from '../../../services/exerciseService';
+const mockFlashcards: any[] = [];
 
 export function MaterialFlashcardsPage() {
   const { id } = useParams();
@@ -37,12 +15,29 @@ export function MaterialFlashcardsPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [completedCards, setCompletedCards] = useState<string[]>([]);
+  const [cards, setCards] = useState<any[]>(mockFlashcards);
 
-  const currentCard = mockFlashcards[currentIndex];
-  const progress = ((currentIndex + 1) / mockFlashcards.length) * 100;
+  useEffect(() => {
+    const folderId = Number(id);
+    if (!folderId) return;
+    exerciseService.getFolderById(folderId)
+      .then((res) => {
+        const server = res.metaData;
+        const fc = (server.flashCards || []).map((c: any, idx: number) => ({
+          id: String(c.id ?? idx),
+          term: c.frontContent || '',
+          definition: c.backContent || '',
+        }));
+        if (fc.length) setCards(fc);
+      })
+      .catch(() => {});
+  }, [id]);
+
+  const currentCard = cards[currentIndex];
+  const progress = cards.length ? (((currentIndex + 1) / cards.length) * 100) : 0;
 
   const handleNext = () => {
-    if (currentIndex < mockFlashcards.length - 1) {
+    if (currentIndex < cards.length - 1) {
       if (!completedCards.includes(currentCard.id)) {
         setCompletedCards([...completedCards, currentCard.id]);
       }
@@ -80,7 +75,7 @@ export function MaterialFlashcardsPage() {
           <div className="text-center">
             <h2 className="font-semibold">Thẻ ghi nhớ</h2>
             <p className="text-sm text-muted-foreground">
-              {currentIndex + 1} / {mockFlashcards.length}
+              {currentIndex + 1} / {cards.length || 0}
             </p>
           </div>
           <div className="w-10" /> {/* Spacer for alignment */}
@@ -145,7 +140,7 @@ export function MaterialFlashcardsPage() {
           <Button
             size="lg"
             onClick={handleNext}
-            disabled={currentIndex === mockFlashcards.length}
+            disabled={currentIndex === cards.length}
           >
             {currentIndex === mockFlashcards.length - 1 ? 'Hoàn thành' : 'Tiếp'}
             <ArrowRight className="w-4 h-4 ml-2" />

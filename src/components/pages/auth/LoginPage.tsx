@@ -6,20 +6,20 @@ import { Label } from '../../ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../ui/card';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../../utils/authStore';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export function LoginPage() {
   const navigate = useNavigate();
   const { login, isAuthenticated, user } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      if (user?.role === 'admin') {
+      if (user?.role === 'ADMIN') {
         navigate('/admin/dashboard', { replace: true });
       } else {
         navigate('/courses', { replace: true });
@@ -32,13 +32,11 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
+      const success = await login(username, password);
       
       if (success) {
         toast.success('Đăng nhập thành công!');
         // Navigation is handled by useEffect
-      } else {
-        toast.error('Email hoặc mật khẩu không đúng');
       }
     } catch (error) {
       toast.error('Đã xảy ra lỗi. Vui lòng thử lại.');
@@ -74,15 +72,20 @@ export function LoginPage() {
           <form onSubmit={handleLogin}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="email@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="username"
+                  type="text"
+                  placeholder="username123"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   required
+                  minLength={5}
+                  maxLength={20}
                 />
+                <p className="text-xs text-muted-foreground">
+                  5-20 ký tự, chỉ chữ và số
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Mật khẩu</Label>
@@ -94,6 +97,7 @@ export function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    minLength={6}
                   />
                   <button
                     type="button"
@@ -125,11 +129,6 @@ export function LoginPage() {
                   'Đăng nhập'
                 )}
               </Button>
-              <div className="text-xs text-muted-foreground bg-muted p-3 rounded-lg">
-                <p className="font-medium mb-1">Tài khoản Demo:</p>
-                <p>Admin: admin@capyvocab.com / admin123</p>
-                <p>User: user@capyvocab.com / user123</p>
-              </div>
               <p className="text-sm text-center text-muted-foreground">
                 Chưa có tài khoản?{' '}
                 <Link to="/register" className="text-primary hover:underline font-medium">
@@ -152,7 +151,7 @@ export function LoginPage() {
 
         {/* Social Login */}
         <div className="grid grid-cols-2 gap-4">
-          <Button variant="outline">
+          <Button variant="outline" type="button">
             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
               <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -161,7 +160,7 @@ export function LoginPage() {
             </svg>
             Google
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" type="button">
             <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
             </svg>

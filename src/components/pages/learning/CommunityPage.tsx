@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { PostCard } from '../../community/PostCard';
 import { CreatePostBox } from '../../community/CreatePostBox';
@@ -18,62 +18,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../ui/alert-dialog';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { useAuthStore } from '../../../utils/authStore';
+import { postService } from '../../../services/postService';
 
-// Mock data for posts
-const mockPosts = [
-  {
-    id: '1',
-    user: {
-      id: 'user001',
-      name: 'User001',
-      avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-    },
-    content: 'advanced: tu moi nay hay ne',
-    hashtags: ['#ahihi'],
-    images: [
-      'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-      'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-      'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-      'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-      'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-    ],
-    likes: 0,
-    comments: 0,
-    timestamp: '03/07/2025 22:32',
-    isLiked: false,
-  },
-  {
-    id: '2',
-    user: {
-      id: 'user001',
-      name: 'User001',
-      avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-    },
-    content: 'Greenwashing: tay xanh. Đây là một từ vựng rất hay và thú vị mà tôi vừa mới học được hôm nay. Nó có ý nghĩa là việc một công ty hay tổ chức làm ra vẻ họ quan tâm đến môi trường nhưng thực tế họ không làm gì cả. Rất phù hợp để mô tả nhiều tình huống trong cuộc sống hiện đại của chúng ta.',
-    hashtags: ['#vocabulary', '#english'],
-    images: [],
-    likes: 2,
-    comments: 1,
-    timestamp: '03/07/2025 22:19',
-    isLiked: true,
-  },
-  {
-    id: '3',
-    user: {
-      id: 'user002',
-      name: 'User002',
-      avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-    },
-    content: 'Học từ vựng hôm nay thật là vui! #CapyVocab #LearningEnglish',
-    hashtags: ['#CapyVocab', '#LearningEnglish'],
-    images: [],
-    likes: 5,
-    comments: 2,
-    timestamp: '03/07/2025 21:45',
-    isLiked: false,
-  },
-];
+const mockPosts: Post[] = [];
 
 interface Post {
   id: string;
@@ -92,7 +41,7 @@ interface Post {
 }
 
 export function CommunityPage() {
-  const [posts, setPosts] = useState(mockPosts);
+  const [posts, setPosts] = useState<Post[]>(mockPosts);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [isEditPostOpen, setIsEditPostOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -102,8 +51,30 @@ export function CommunityPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterHashtag, setFilterHashtag] = useState<string | null>(null);
   const [filterUserId, setFilterUserId] = useState<string | null>(null);
+  const { user } = useAuthStore();
+  const currentUserId = String(user?.id || '0');
 
-  const currentUserId = 'user001'; // Mock current user
+  useEffect(() => {
+    postService.getPosts({ page: 1, limit: 20 })
+      .then((res) => {
+        const apiPosts = res.metaData.posts.map((p) => ({
+          id: String(p.id),
+          user: { id: String(p.createdBy.id), name: p.createdBy.username, avatar: p.createdBy.avatar || '' },
+          content: p.content,
+          hashtags: p.tags || [],
+          images: p.thumbnails || [],
+          likes: p.voteCount || 0,
+          comments: p.commentCount || 0,
+          timestamp: p.createdAt,
+          isLiked: !!p.isAlreadyVote,
+        }));
+        setPosts(apiPosts);
+      })
+      .catch((e: any) => {
+        toast.error(e?.message || 'Tải danh sách bài viết thất bại');
+        setPosts([]);
+      });
+  }, []);
 
   // Filtered posts based on search query and filters
   const filteredPosts = useMemo(() => {
@@ -134,40 +105,40 @@ export function CommunityPage() {
     });
   }, [posts, searchQuery, filterHashtag, filterUserId]);
 
-  const handleLike = (postId: string) => {
-    setPosts(prevPosts =>
-      prevPosts.map(post =>
-        post.id === postId
-          ? {
-              ...post,
-              isLiked: !post.isLiked,
-              likes: post.isLiked ? post.likes - 1 : post.likes + 1,
-            }
-          : post
-      )
-    );
+  const handleLike = async (postId: string) => {
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
+    try {
+      const numericId = Number(postId);
+      if (!Number.isNaN(numericId)) {
+        const target = posts.find(p => p.id === postId);
+        if (target?.isLiked) await postService.unlikePost(numericId);
+        else await postService.likePost(numericId);
+      }
+    } catch {}
   };
 
-  const handleCreatePost = (content: string, images: File[]) => {
-    const newPost: Post = {
-      id: `post-${Date.now()}`,
-      user: {
-        id: currentUserId,
-        name: 'User001',
-        avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-      },
-      content,
-      hashtags: [], // Extract hashtags from content if needed
-      images: [], // In real app, would upload and get URLs
-      likes: 0,
-      comments: 0,
-      timestamp: new Date().toLocaleString('vi-VN'),
-      isLiked: false,
-    };
-
-    setPosts(prev => [newPost, ...prev]);
-    toast.success('Đã tạo bài đăng mới');
-    setIsCreatePostOpen(false);
+  const handleCreatePost = async (content: string, images: File[]) => {
+    try {
+      const urls = images.length ? await postService.uploadImages(images) : [];
+      await postService.createPost({ content, thumbnails: urls, tags: [] });
+      const res = await postService.getPosts({ page: 1, limit: 20 });
+      const apiPosts = res.metaData.posts.map((p) => ({
+        id: String(p.id),
+        user: { id: String(p.createdBy.id), name: p.createdBy.username, avatar: p.createdBy.avatar || '' },
+        content: p.content,
+        hashtags: p.tags || [],
+        images: p.thumbnails || [],
+        likes: p.voteCount || 0,
+        comments: p.commentCount || 0,
+        timestamp: p.createdAt,
+        isLiked: !!p.isAlreadyVote,
+      }));
+      setPosts(apiPosts);
+      toast.success('Đã tạo bài đăng mới');
+      setIsCreatePostOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || 'Tạo bài đăng thất bại');
+    }
   };
 
   const handleEditPost = (post: Post) => {
@@ -175,32 +146,46 @@ export function CommunityPage() {
     setIsEditPostOpen(true);
   };
 
-  const handleUpdatePost = (postId: string, content: string, hashtags: string[], images: File[]) => {
-    setPosts(prev =>
-      prev.map(post =>
-        post.id === postId
-          ? {
-              ...post,
-              content,
-              hashtags,
-              // In real app, would handle image updates
-            }
-          : post
-      )
-    );
-    toast.success('Đã cập nhật bài đăng');
-    setIsEditPostOpen(false);
-    setEditingPost(null);
+  const handleUpdatePost = async (postId: string, content: string, hashtags: string[], newImages: File[], existingImages: string[]) => {
+    try {
+      const numericId = Number(postId);
+      const uploaded = newImages.length ? await postService.uploadImages(newImages) : [];
+      const thumbnails = [...(existingImages || []), ...uploaded];
+      const res = await postService.updatePost(numericId, { content, thumbnails, tags: hashtags });
+      const p = res.metaData;
+      setPosts(prev => prev.map(post => post.id === postId ? {
+        id: String(p.id),
+        user: { id: String(p.createdBy.id), name: p.createdBy.username, avatar: p.createdBy.avatar || '' },
+        content: p.content,
+        hashtags: p.tags || [],
+        images: p.thumbnails || [],
+        likes: p.voteCount || 0,
+        comments: p.commentCount || 0,
+        timestamp: p.createdAt,
+        isLiked: !!p.isAlreadyVote,
+      } : post));
+      toast.success('Đã cập nhật bài đăng');
+      setIsEditPostOpen(false);
+      setEditingPost(null);
+    } catch (e: any) {
+      toast.error(e?.message || 'Cập nhật bài đăng thất bại');
+    }
   };
 
   const handleDeletePost = (postId: string) => {
     setDeletePostId(postId);
   };
 
-  const confirmDeletePost = () => {
-    if (deletePostId) {
+  const confirmDeletePost = async () => {
+    if (!deletePostId) return;
+    try {
+      const numericId = Number(deletePostId);
+      await postService.deletePost(numericId);
       setPosts(prev => prev.filter(post => post.id !== deletePostId));
       toast.success('Đã xóa bài đăng');
+    } catch (e: any) {
+      toast.error(e?.message || 'Xóa bài đăng thất bại');
+    } finally {
       setDeletePostId(null);
     }
   };

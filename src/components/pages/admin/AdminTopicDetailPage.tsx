@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Card, CardContent } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -11,54 +11,196 @@ import {
   TableHeader,
   TableRow,
 } from '../../ui/table';
-import { ArrowLeft, Plus, Edit, Trash2, Volume2 } from 'lucide-react';
-import { useAdminStore } from '../../../utils/adminStore';
-import { WordFormDialog } from '../../admin/WordFormDialog';
+import { ArrowLeft, Plus, Edit, Trash2, Volume2, Loader2, RotateCcw } from 'lucide-react';
+import { GeneralWordFormDialog } from '../../admin/GeneralWordFormDialog';
 import { DeleteConfirmDialog } from '../../admin/DeleteConfirmDialog';
-
-const levelColors = {
-  1: '#E9372D',
-  2: '#FEC107',
-  3: '#0FA9F5',
-  4: '#3D47BA',
-};
-
-const levelNames = {
-  1: 'Cơ bản',
-  2: 'Trung bình',
-  3: 'Nâng cao',
-  4: 'Chuyên sâu',
-};
+import { topicService, Topic, TopicWordsResponse } from '../../../services/topicService';
+import { wordService, Word } from '../../../services/wordService';
+import { toast } from 'sonner';
 
 export function AdminTopicDetailPage() {
-  const { topicId } = useParams();
+  const { topicId } = useParams<{ topicId: string }>();
   const navigate = useNavigate();
-  const {
-    getTopicById,
-    getCourseById,
-    getWordsByTopic,
-    addWord,
-    updateWord,
-    deleteWord,
-    removeWordFromTopic,
-  } = useAdminStore();
-
-  const topic = getTopicById(topicId!);
-  const course = topic?.courseId ? getCourseById(topic.courseId) : null;
-  const words = getWordsByTopic(topicId!);
+  const [topic, setTopic] = useState<Topic | null>(null);
+  const [words, setWords] = useState<Word[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingWord, setEditingWord] = useState<any>(undefined);
-  const [deletingWord, setDeletingWord] = useState<any>(undefined);
+  const [editingWord, setEditingWord] = useState<Word | undefined>();
+  const [deletingWord, setDeletingWord] = useState<Word | undefined>();
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  if (!topic) {
+  // Fetch topic and words
+  const fetchData = async () => {
+    if (!topicId) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch topic
+      const topicResponse = await topicService.getTopicById(Number(topicId));
+      setTopic(topicResponse.metaData);
+
+      // Fetch words of topic
+      try {
+        const wordsResponse = await topicService.getTopicWords(Number(topicId), { limit: 1000 });
+        setWords(wordsResponse.metaData.words.map((w: any) => ({
+          id: w.id,
+          content: w.content,
+          pronunciation: w.pronunciation || '',
+          meaning: w.meaning || '',
+          position: (w.position || 'Others') as Word['position'],
+          audio: w.audio,
+          image: w.image,
+          example: w.example,
+          translateExample: w.translateExample,
+        })));
+      } catch (err) {
+        // Fallback: get topic words from topic response
+        const topicWords = topicResponse.metaData.words || [];
+        setWords(topicWords.map((w: any) => ({
+          id: w.id,
+          content: w.content,
+          pronunciation: w.pronunciation || '',
+          meaning: w.meaning || '',
+          position: (w.position || 'Others') as Word['position'],
+          audio: w.audio,
+          image: w.image,
+          example: w.example,
+          translateExample: w.translateExample,
+        })));
+      }
+    } catch (err: any) {
+      setError(err.message || 'Không thể tải dữ liệu');
+      toast.error(err.message || 'Có lỗi xảy ra');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [topicId]);
+
+  const handleAdd = () => {
+    setEditingWord(undefined);
+    setIsFormOpen(true);
+  };
+
+  const handleEdit = (word: Word) => {
+    setEditingWord(word);
+    setIsFormOpen(true);
+  };
+
+  const handleFormSubmit = async (wordData: {
+    content: string;
+    pronunciation: string;
+    meaning: string;
+    position?: 'Noun' | 'Verb' | 'Adjective' | 'Adverb' | 'Others';
+    audio?: string;
+    image?: string;
+    example?: string;
+    translateExample?: string;
+    topicIds?: number[];
+  }) => {
+    try {
+      if (editingWord) {
+        // Update word and ensure it's linked to this topic
+        const updatedData = {
+          ...wordData,
+          topicIds: topicId ? [Number(topicId)] : undefined,
+        };
+        await wordService.updateWord(editingWord.id, updatedData);
+        toast.success('Cập nhật từ vựng thành công');
+      } else {
+        // Create new word and link to this topic
+        const newWordData = {
+          ...wordData,
+          topicIds: topicId ? [Number(topicId)] : undefined,
+        };
+        await wordService.createWords([newWordData]);
+        toast.success('Tạo từ vựng thành công');
+      }
+      setIsFormOpen(false);
+      setEditingWord(undefined);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Có lỗi xảy ra');
+    }
+  };
+
+  const handleDelete = async (deleteCompletely: boolean) => {
+    if (!deletingWord) return;
+
+    try {
+      setIsDeleting(true);
+      if (deleteCompletely) {
+        await wordService.deleteWord(deletingWord.id);
+        toast.success('Xóa từ vựng thành công');
+      } else {
+        // Remove from topic - update topic to remove this word
+        if (topicId && topic) {
+          const currentWordIds = topic.words?.map((w) => w.id) || [];
+          const updatedWordIds = currentWordIds.filter((id) => id !== deletingWord.id);
+          
+          await topicService.updateTopic(Number(topicId), {
+            wordIds: updatedWordIds,
+          });
+          toast.success('Xóa từ vựng khỏi chủ đề thành công');
+        }
+      }
+      setDeletingWord(undefined);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Có lỗi xảy ra khi xóa từ vựng');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRestore = async (word: Word) => {
+    try {
+      await wordService.restoreWord(word.id);
+      toast.success('Khôi phục từ vựng thành công');
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Có lỗi xảy ra khi khôi phục từ vựng');
+    }
+  };
+
+  const handleBack = () => {
+    if (topic?.courses && topic.courses.length > 0) {
+      navigate(`/admin/courses/${topic.courses[0].id}`);
+    } else {
+      navigate('/admin/topics');
+    }
+  };
+
+  const playAudio = (audioUrl?: string) => {
+    if (audioUrl && audioUrl !== 'N/A') {
+      const audio = new Audio(audioUrl);
+      audio.play().catch((err) => console.error('Error playing audio:', err));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error || !topic) {
     return (
       <div className="space-y-6">
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Không tìm thấy chủ đề</p>
+          <p className="text-muted-foreground">{error || 'Không tìm thấy chủ đề'}</p>
           <Button
             variant="outline"
-            onClick={() => navigate('/admin/courses')}
+            onClick={() => navigate('/admin/topics')}
             className="mt-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -69,41 +211,10 @@ export function AdminTopicDetailPage() {
     );
   }
 
-  const handleAdd = () => {
-    setEditingWord(undefined);
-    setIsFormOpen(true);
-  };
-
-  const handleEdit = (word: any) => {
-    setEditingWord(word);
-    setIsFormOpen(true);
-  };
-
-  const handleFormSubmit = (wordData: any) => {
-    if (editingWord) {
-      updateWord(editingWord.id, wordData);
-    } else {
-      addWord(wordData);
-    }
-  };
-
-  const handleDelete = (deleteCompletely: boolean) => {
-    if (deletingWord) {
-      if (deleteCompletely) {
-        deleteWord(deletingWord.id);
-      } else {
-        removeWordFromTopic(deletingWord.id, topicId!);
-      }
-    }
-  };
-
-  const handleBack = () => {
-    if (course) {
-      navigate(`/admin/courses/${course.id}`);
-    } else {
-      navigate('/admin/courses');
-    }
-  };
+  const wordsByPosition = words.reduce((acc, w) => {
+    acc[w.position] = (acc[w.position] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="space-y-6">
@@ -111,22 +222,48 @@ export function AdminTopicDetailPage() {
       <div>
         <Button variant="ghost" onClick={handleBack} className="mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Quay lại {course ? course.name : 'danh sách'}
+          Quay lại {topic.courses && topic.courses.length > 0 ? topic.courses[0].title : 'danh sách'}
         </Button>
 
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
-            <div className="w-20 h-20 bg-primary/10 rounded-xl flex items-center justify-center text-4xl">
-              {topic.thumbnail || '📖'}
-            </div>
+            {topic.thumbnail && topic.thumbnail !== 'N/A' ? (
+              <img
+                src={topic.thumbnail}
+                alt={topic.title}
+                className="w-20 h-20 rounded-xl object-cover border"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'w-20 h-20 bg-primary/10 rounded-xl flex items-center justify-center text-4xl';
+                    fallback.textContent = '📖';
+                    parent.insertBefore(fallback, e.currentTarget);
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-20 h-20 bg-primary/10 rounded-xl flex items-center justify-center text-4xl">
+                📖
+              </div>
+            )}
             <div>
-              <h1 className="text-3xl font-bold">{topic.name}</h1>
+              <h1 className="text-3xl font-bold">{topic.title}</h1>
               <p className="text-muted-foreground mt-1">{topic.description}</p>
-              {course && (
-                <Badge variant="outline" className="mt-3">
-                  {course.name}
+              <div className="flex items-center gap-2 mt-3">
+                <Badge
+                  variant={topic.type === 'Premium' ? 'default' : 'outline'}
+                  className={topic.type === 'Premium' ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : ''}
+                >
+                  {topic.type}
                 </Badge>
-              )}
+                {topic.courses && topic.courses.length > 0 && (
+                  <Badge variant="outline">
+                    {topic.courses[0].title}
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
           <Button onClick={handleAdd}>
@@ -137,28 +274,18 @@ export function AdminTopicDetailPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{words.length}</div>
             <p className="text-xs text-muted-foreground">Tổng từ vựng</p>
           </CardContent>
         </Card>
-        {[1, 2, 3, 4].map((level) => (
-          <Card key={level}>
+        {['Noun', 'Verb', 'Adjective', 'Adverb'].map((pos) => (
+          <Card key={pos}>
             <CardContent className="pt-6">
-              <div className="flex items-center gap-2 mb-1">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: levelColors[level as 1 | 2 | 3 | 4] }}
-                />
-                <div className="text-2xl font-bold">
-                  {words.filter((w) => w.level === level).length}
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Cấp độ {level} - {levelNames[level as 1 | 2 | 3 | 4]}
-              </p>
+              <div className="text-2xl font-bold">{wordsByPosition[pos] || 0}</div>
+              <p className="text-xs text-muted-foreground">{pos}</p>
             </CardContent>
           </Card>
         ))}
@@ -197,7 +324,6 @@ export function AdminTopicDetailPage() {
                   <TableHead>Dịch nghĩa</TableHead>
                   <TableHead>Loại từ</TableHead>
                   <TableHead>Ví dụ</TableHead>
-                  <TableHead>Cấp độ</TableHead>
                   <TableHead className="text-right">Hành động</TableHead>
                 </TableRow>
               </TableHeader>
@@ -206,33 +332,24 @@ export function AdminTopicDetailPage() {
                   <TableRow key={word.id}>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        {word.image && (
+                        {word.image && word.image !== 'N/A' && (
                           <div className="relative w-10 h-10 rounded overflow-hidden bg-muted flex items-center justify-center">
                             <img
                               src={word.image}
-                              alt={word.word}
+                              alt={word.content}
                               className="w-full h-full object-cover"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
-                                const parent = e.currentTarget.parentElement;
-                                if (parent) {
-                                  const icon = document.createElement('div');
-                                  icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-                                  parent.appendChild(icon);
-                                }
                               }}
                             />
                           </div>
                         )}
-                        {word.audioUrl && (
+                        {word.audio && word.audio !== 'N/A' && (
                           <Button
                             variant="ghost"
                             size="icon"
                             className="w-8 h-8"
-                            onClick={() => {
-                              const audio = new Audio(word.audioUrl);
-                              audio.play().catch(err => console.error('Error playing audio:', err));
-                            }}
+                            onClick={() => playAudio(word.audio)}
                           >
                             <Volume2 className="w-4 h-4" />
                           </Button>
@@ -241,31 +358,30 @@ export function AdminTopicDetailPage() {
                     </TableCell>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{word.word}</div>
+                        <div className="font-medium">{word.content}</div>
                         <div className="text-sm text-muted-foreground">
-                          {word.phonetic}
+                          {word.pronunciation}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{word.translation}</TableCell>
+                    <TableCell>{word.meaning}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{word.partOfSpeech}</Badge>
+                      <Badge variant="outline" className="capitalize">
+                        {word.position}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="max-w-xs">
-                        <div className="text-sm truncate">{word.example}</div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {word.exampleTranslation}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: levelColors[word.level] }}
-                        />
-                        <span className="text-sm">Cấp {word.level}</span>
+                        {word.example && word.example !== 'N/A' && (
+                          <>
+                            <div className="text-sm truncate">{word.example}</div>
+                            {word.translateExample && word.translateExample !== 'N/A' && (
+                              <div className="text-xs text-muted-foreground truncate">
+                                {word.translateExample}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -277,13 +393,24 @@ export function AdminTopicDetailPage() {
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeletingWord(word)}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                        {word.deletedAt ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRestore(word)}
+                            title="Khôi phục"
+                          >
+                            <RotateCcw className="w-4 h-4 text-green-500" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeletingWord(word)}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -294,11 +421,10 @@ export function AdminTopicDetailPage() {
         </CardContent>
       </Card>
 
-      <WordFormDialog
+      <GeneralWordFormDialog
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
         word={editingWord}
-        topicId={topicId!}
         onSubmit={handleFormSubmit}
       />
 
@@ -307,8 +433,8 @@ export function AdminTopicDetailPage() {
         onOpenChange={(open) => !open && setDeletingWord(undefined)}
         title="Xóa từ vựng"
         description="Bạn muốn xóa từ vựng này khỏi chủ đề hay xóa hoàn toàn khỏi hệ thống?"
-        itemName={`${deletingWord?.word} - ${deletingWord?.translation}`}
-        parentName={topic.name}
+        itemName={`${deletingWord?.content} - ${deletingWord?.meaning}`}
+        parentName={topic.title}
         onConfirmDelete={handleDelete}
       />
     </div>

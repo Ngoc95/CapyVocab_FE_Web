@@ -18,17 +18,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { AdminTopic, useAdminStore } from '../../utils/adminStore';
+import { Topic, TopicType } from '../../services/topicService';
+import { courseService, Course } from '../../services/courseService';
 
 interface GeneralTopicFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  topic?: AdminTopic;
+  topic?: Topic;
   onSubmit: (topic: {
-    name: string;
+    title: string;
     description: string;
     thumbnail?: string;
-    courseId: string;
+    type?: TopicType;
+    wordIds?: number[];
+    courseIds?: number[];
   }) => void;
 }
 
@@ -38,40 +41,65 @@ export function GeneralTopicFormDialog({
   topic,
   onSubmit,
 }: GeneralTopicFormDialogProps) {
-  const { courses } = useAdminStore();
-  const [name, setName] = useState('');
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [thumbnail, setThumbnail] = useState('');
-  const [courseId, setCourseId] = useState('');
+  const [type, setType] = useState<TopicType>('Free');
+  const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([]);
+
+  // Fetch courses
+  useEffect(() => {
+    if (open) {
+      courseService.getCourses({ limit: 1000 })
+        .then((response) => {
+          setCourses(response.metaData.courses);
+        })
+        .catch((err) => {
+          console.error('Error fetching courses:', err);
+        });
+    }
+  }, [open]);
 
   useEffect(() => {
     if (topic) {
-      setName(topic.name);
+      setTitle(topic.title);
       setDescription(topic.description);
       setThumbnail(topic.thumbnail || '');
-      setCourseId(topic.courseId || 'none');
+      setType(topic.type);
+      setSelectedCourseIds(topic.courses?.map(c => c.id) || []);
     } else {
-      setName('');
+      setTitle('');
       setDescription('');
       setThumbnail('');
-      setCourseId('none');
+      setType('Free');
+      setSelectedCourseIds([]);
     }
   }, [topic, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
-      name,
+      title,
       description,
       thumbnail: thumbnail || undefined,
-      courseId: courseId === 'none' ? '' : courseId,
+      type,
+      courseIds: selectedCourseIds.length > 0 ? selectedCourseIds : undefined,
     });
     onOpenChange(false);
   };
 
+  const toggleCourse = (courseId: number) => {
+    setSelectedCourseIds((prev) =>
+      prev.includes(courseId)
+        ? prev.filter((id) => id !== courseId)
+        : [...prev, courseId]
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {topic ? 'Chỉnh sửa chủ đề' : 'Thêm chủ đề mới'}
@@ -85,13 +113,14 @@ export function GeneralTopicFormDialog({
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Tên chủ đề *</Label>
+              <Label htmlFor="title">Tên chủ đề *</Label>
               <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ví dụ: Greetings & Introductions"
                 required
+                maxLength={255}
               />
             </div>
 
@@ -104,33 +133,56 @@ export function GeneralTopicFormDialog({
                 placeholder="Mô tả chi tiết về chủ đề..."
                 rows={3}
                 required
+                maxLength={255}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="courseId">Khóa học</Label>
-              <Select value={courseId} onValueChange={setCourseId}>
+              <Label htmlFor="type">Loại chủ đề</Label>
+              <Select value={type} onValueChange={(v) => setType(v as TopicType)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn khóa học (tùy chọn)" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Chưa gán khóa học</SelectItem>
-                  {courses.map((course) => (
-                    <SelectItem key={course.id} value={course.id}>
-                      {course.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="Free">Free</SelectItem>
+                  <SelectItem value="Premium">Premium</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="thumbnail">Thumbnail (emoji)</Label>
+              <Label>Khóa học (có thể chọn nhiều)</Label>
+              <div className="border rounded-lg p-3 max-h-40 overflow-y-auto">
+                {courses.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Đang tải...</p>
+                ) : (
+                  <div className="space-y-2">
+                    {courses.map((course) => (
+                      <label
+                        key={course.id}
+                        className="flex items-center space-x-2 cursor-pointer hover:bg-muted/50 p-2 rounded"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedCourseIds.includes(course.id)}
+                          onChange={() => toggleCourse(course.id)}
+                          className="rounded"
+                        />
+                        <span className="text-sm">{course.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="thumbnail">Thumbnail (URL hoặc emoji)</Label>
               <Input
                 id="thumbnail"
                 value={thumbnail}
                 onChange={(e) => setThumbnail(e.target.value)}
-                placeholder="Ví dụ: 👋"
+                placeholder="Ví dụ: 👋 hoặc https://example.com/thumbnail.jpg"
               />
             </div>
           </div>
