@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Heart, Send } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../../ui/avatar';
@@ -7,186 +7,122 @@ import { Input } from '../../ui/input';
 import { ImageWithFallback } from '../../figma/ImageWithFallback';
 import { ScrollArea } from '../../ui/scroll-area';
 import { ImageViewer } from '../../community/ImageViewer';
+import { postService } from '../../../services/postService';
+import type { CommentItem } from '../../../services/exerciseService';
+import { toast } from 'sonner';
+import { useAuthStore } from '../../../utils/authStore';
 
-interface Comment {
-  id: string;
-  userId: string;
-  userName: string;
-  avatar: string;
-  content: string;
-  timestamp: string;
-  likes: number;
-  isLiked: boolean;
-  replies: Comment[];
-}
-
-// Mock data - should match the post from community
-const mockPost = {
-  id: '1',
-  user: {
-    id: 'user001',
-    name: 'User001',
-    email: 'User001@gmail.com',
-    avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-  },
-  content: 'advanced: tu moi nay hay ne',
-  hashtags: ['#ahihi'],
-  images: [
-    'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-    'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-    'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-    'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-    'figma:asset/0c10484aceec240cc479b8116f5b098606ee1d57.png',
-  ],
-  likes: 2,
-  comments: 1,
-  timestamp: '03/07/2025 22:32',
-  isLiked: true,
-};
-
-const mockComments: Comment[] = [
-  {
-    id: 'c1',
-    userId: 'user001',
-    userName: 'User001',
-    avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-    content: 'vui vay',
-    timestamp: '03/07/2025 22:34',
-    likes: 1,
-    isLiked: false,
-    replies: [
-      {
-        id: 'c1-r1',
-        userId: 'user002',
-        userName: 'User002',
-        avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-        content: 'đúng vậy!',
-        timestamp: '03/07/2025 22:35',
-        likes: 0,
-        isLiked: false,
-        replies: [],
-      },
-    ],
-  },
-  {
-    id: 'c2',
-    userId: 'user001',
-    userName: 'User001',
-    avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-    content: 'hehehe',
-    timestamp: '03/07/2025 22:34',
-    likes: 2,
-    isLiked: true,
-    replies: [],
-  },
-  {
-    id: 'c3',
-    userId: 'user001',
-    userName: 'User001',
-    avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-    content: 'ahihi',
-    timestamp: '03/07/2025 22:34',
-    likes: 0,
-    isLiked: false,
-    replies: [],
-  },
-];
+const emptyComments: CommentItem[] = [];
 
 export function PostDetailPage() {
   const { postId } = useParams();
   const navigate = useNavigate();
-  const [post, setPost] = useState(mockPost);
-  const [comments, setComments] = useState(mockComments);
+  const { user } = useAuthStore();
+  const [post, setPost] = useState({
+    id: String(postId || ''),
+    user: { id: '0', name: '', email: '', avatar: '' },
+    content: '',
+    hashtags: [] as string[],
+    images: [] as string[],
+    likes: 0,
+    comments: 0,
+    timestamp: '',
+    isLiked: false,
+  });
+  const [selectedPostComment, setSelectedPostComment] = useState<CommentItem[]>(emptyComments);
+  const [childComment, setChildComment] = useState<Map<number, CommentItem[]>>(new Map());
   const [commentText, setCommentText] = useState('');
-  const [replyingTo, setReplyingTo] = useState<{ id: string; userName: string } | null>(null);
+  const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
+  const [isCreateChildComment, setIsCreateChildComment] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
-  const handleLike = () => {
+  useEffect(() => {
+    const loadPost = async () => {
+      try {
+        const numericId = Number(postId);
+        if (Number.isNaN(numericId)) return;
+        const res = await postService.getPostById(numericId);
+        const p = res.metaData;
+        setPost({
+          id: String(p.id),
+          user: { id: String(p.createdBy.id), name: p.createdBy.username, email: p.createdBy.email || '', avatar: p.createdBy.avatar || '' },
+          content: p.content,
+          hashtags: p.tags || [],
+          images: p.thumbnails || [],
+          likes: p.voteCount || 0,
+          comments: p.commentCount || 0,
+          timestamp: p.createdAt,
+          isLiked: !!p.isAlreadyVote,
+        });
+        setSelectedPostComment((p.comments || []) as any);
+      } catch (e: any) {
+        toast.error(e?.message || 'Tải bài viết thất bại');
+      }
+    };
+    loadPost();
+  }, [postId]);
+
+  const handleLike = async () => {
     setPost(prev => ({
       ...prev,
       isLiked: !prev.isLiked,
       likes: prev.isLiked ? prev.likes - 1 : prev.likes + 1,
     }));
+    try {
+      const numericId = Number(postId);
+      if (!Number.isNaN(numericId)) {
+        if (post.isLiked) await postService.unlikePost(numericId);
+        else await postService.likePost(numericId);
+      }
+    } catch {}
   };
 
-  const handleLikeComment = (commentId: string, isReply: boolean = false, parentId?: string) => {
-    setComments(prevComments => {
-      return prevComments.map(comment => {
-        if (comment.id === commentId) {
-          return {
-            ...comment,
-            isLiked: !comment.isLiked,
-            likes: comment.isLiked ? comment.likes - 1 : comment.likes + 1,
-          };
-        }
-        
-        // Handle replies
-        if (parentId && comment.id === parentId) {
-          return {
-            ...comment,
-            replies: comment.replies.map(reply => {
-              if (reply.id === commentId) {
-                return {
-                  ...reply,
-                  isLiked: !reply.isLiked,
-                  likes: reply.isLiked ? reply.likes - 1 : reply.likes + 1,
-                };
-              }
-              return reply;
-            }),
-          };
-        }
-        
-        return comment;
-      });
-    });
-  };
+  const handleLikeComment = () => {};
 
-  const handleSubmitComment = () => {
+  const handleSubmitComment = async () => {
     if (!commentText.trim()) return;
-
-    if (replyingTo) {
-      // Add reply to comment
-      const newReply: Comment = {
-        id: `r${Date.now()}`,
-        userId: 'user001',
-        userName: 'User001',
-        avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
+    try {
+      const numericId = Number(postId);
+      if (Number.isNaN(numericId)) return;
+      const res = await postService.createComment(numericId, {
         content: commentText,
-        timestamp: new Date().toLocaleString('vi-VN'),
-        likes: 0,
-        isLiked: false,
-        replies: [],
-      };
-
-      setComments(prevComments =>
-        prevComments.map(comment =>
-          comment.id === replyingTo.id
-            ? { ...comment, replies: [...comment.replies, newReply] }
-            : comment
-        )
-      );
-      setReplyingTo(null);
-    } else {
-      // Add new top-level comment
-      const newComment: Comment = {
-        id: `c${Date.now()}`,
-        userId: 'user001',
-        userName: 'User001',
-        avatar: 'https://images.unsplash.com/photo-1623582854588-d60de57fa33f?w=100&h=100&fit=crop',
-        content: commentText,
-        timestamp: new Date().toLocaleString('vi-VN'),
-        likes: 0,
-        isLiked: false,
-        replies: [],
-      };
-
-      setComments(prev => [...prev, newComment]);
-      setPost(prev => ({ ...prev, comments: prev.comments + 1 }));
+        parentId: isCreateChildComment ? selectedComment?.id ?? null : null,
+      });
+      const newComment = res.metaData;
+      if (isCreateChildComment && selectedComment) {
+        setChildComment(prev => {
+          const updated = new Map(prev);
+          const key = Number(selectedComment.id);
+          const existing = updated.get(key) || [];
+          updated.set(key, [newComment, ...existing]);
+          return updated;
+        });
+      } else {
+        setSelectedPostComment(prev => [newComment, ...prev]);
+        setPost(prev => ({ ...prev, comments: prev.comments + 1 }));
+      }
+      setCommentText('');
+      setIsCreateChildComment(false);
+      setSelectedComment(null);
+      toast.success('Đã thêm bình luận');
+    } catch (e: any) {
+      toast.error(e?.message || 'Thêm bình luận thất bại');
     }
+  };
 
-    setCommentText('');
+  const handleLoadChildComments = async (parentId: number) => {
+    try {
+      const numericPostId = Number(postId);
+      const res = await postService.getChildComments(numericPostId, parentId);
+      setChildComment(prev => {
+        const updated = new Map(prev);
+        updated.set(parentId, res.metaData || []);
+        return updated;
+      });
+    } catch (e: any) {
+      toast.error(e?.message || 'Tải trả lời thất bại');
+    }
   };
 
   const formatContent = (content: string, hashtags: string[]) => {
@@ -209,7 +145,7 @@ export function PostDetailPage() {
   };
 
   const renderImages = () => {
-    if (post.images.length === 0) return null;
+    if (!post.images || post.images.length === 0) return null;
 
     if (post.images.length === 1) {
       return (
@@ -285,48 +221,46 @@ export function PostDetailPage() {
     );
   };
 
-  const renderComment = (comment: Comment, isReply: boolean = false, parentId?: string) => {
+  const renderComment = (comment: CommentItem, isReply: boolean = false, parentId?: number) => {
     return (
       <div key={comment.id} className={isReply ? 'ml-12' : ''}>
         <div className="flex gap-3">
           <Avatar className="w-9 h-9 flex-shrink-0">
-            <AvatarImage src={comment.avatar} alt={comment.userName} />
-            <AvatarFallback>{comment.userName.slice(0, 2)}</AvatarFallback>
+            <AvatarImage src={comment.userAvatar || ''} alt={comment.username} />
+            <AvatarFallback>{(comment.username || '').slice(0, 2)}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="bg-gray-100 rounded-2xl px-4 py-2">
-              <p className="font-medium text-sm text-gray-900 break-words">{comment.userName}</p>
+              <p className="font-medium text-sm text-gray-900 break-words">{comment.username}</p>
               <p className="text-gray-900 break-words">{comment.content}</p>
             </div>
             <div className="flex items-center gap-3 mt-1 px-2 flex-wrap">
               <button className="text-xs text-gray-500 hover:text-gray-700">
-                {comment.timestamp}
-              </button>
-              <button
-                onClick={() => handleLikeComment(comment.id, isReply, parentId)}
-                className={`text-xs hover:text-[#1AB1F6] flex items-center gap-1 ${
-                  comment.isLiked ? 'text-red-500' : 'text-gray-500'
-                }`}
-              >
-                <Heart className={`w-3 h-3 ${comment.isLiked ? 'fill-red-500' : ''}`} />
-                {comment.likes > 0 && <span>{comment.likes}</span>}
+                {comment.createdAt}
               </button>
               {!isReply && (
                 <button
-                  onClick={() => setReplyingTo({ id: comment.id, userName: comment.userName })}
+                  onClick={() => { setSelectedComment(comment); setIsCreateChildComment(true); }}
                   className="text-xs text-gray-500 hover:text-[#1AB1F6]"
                 >
                   Trả lời
+                </button>
+              )}
+              {!isReply && (
+                <button
+                  onClick={() => handleLoadChildComments(Number(comment.id))}
+                  className="text-xs text-gray-500 hover:text-[#1AB1F6]"
+                >
+                  Xem trả lời
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* Render replies */}
-        {comment.replies.length > 0 && (
+        {childComment.get(Number(comment.id)) && (
           <div className="mt-3 space-y-3">
-            {comment.replies.map(reply => renderComment(reply, true, comment.id))}
+            {(childComment.get(Number(comment.id)) || []).map(reply => renderComment(reply, true, Number(comment.id)))}
           </div>
         )}
       </div>
@@ -391,7 +325,7 @@ export function PostDetailPage() {
 
           {/* Comments Section */}
           <div className="space-y-4 mb-4">
-            {comments.map(comment => renderComment(comment))}
+            {selectedPostComment.map(comment => renderComment(comment))}
           </div>
         </div>
       </ScrollArea>
@@ -400,7 +334,7 @@ export function PostDetailPage() {
       <div className="sticky bottom-0 bg-white border-t px-4 py-3">
         <div className="flex items-center gap-2">
           <Input
-            placeholder={replyingTo ? `Trả lời ${replyingTo.userName}` : "Nhập bình luận..."}
+            placeholder={isCreateChildComment && selectedComment ? `Trả lời ${selectedComment.username}` : "Nhập bình luận..."}
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={(e) => {
@@ -411,11 +345,11 @@ export function PostDetailPage() {
             }}
             className="flex-1"
           />
-          {replyingTo && (
+          {isCreateChildComment && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setReplyingTo(null)}
+              onClick={() => { setIsCreateChildComment(false); setSelectedComment(null); }}
               className="text-[#1AB1F6] hover:text-[#1599d6]"
             >
               Hủy

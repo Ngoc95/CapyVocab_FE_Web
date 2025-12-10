@@ -3,6 +3,8 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../../ui/avatar';
 import { useAuthStore } from '../../../utils/authStore';
+import { useEffect } from 'react';
+import { authService } from '../../../services/authService';
 import { 
   Settings, 
   Calendar,
@@ -69,7 +71,25 @@ const achievements = [
 ];
 
 export function NewProfilePage() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
+
+  useEffect(() => {
+    authService.getAccount()
+      .then((res) => {
+        const u = res.metaData.user;
+        setUser({
+          id: u.id,
+          email: u.email,
+          username: u.username,
+          name: u.username,
+          role: u.role.name as any,
+          avatar: u.avatar,
+          status: u.status,
+          streak: u.streak || 0,
+        });
+      })
+      .catch(() => {});
+  }, [setUser]);
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl space-y-6">

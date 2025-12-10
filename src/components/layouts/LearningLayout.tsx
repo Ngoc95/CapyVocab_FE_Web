@@ -56,11 +56,11 @@ export function LearningLayout() {
                 </Link>
               );
             })}
-            {user?.role === 'admin' && (
+            {user?.role === 'ADMIN' && (
               <Link to="/admin/dashboard">
                 <Button variant="outline" size="sm" className="ml-4">
                   <Shield className="w-4 h-4 mr-2" />
-                  Admin Panel
+                  Admin View
                 </Button>
               </Link>
             )}

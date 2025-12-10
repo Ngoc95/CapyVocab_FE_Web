@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Card, CardContent } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -14,67 +14,51 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { topicService } from '../../../services/topicService';
+import { progressService } from '../../../services/progressService';
 
-const mockFlashcards = [
-  {
-    id: 1,
-    word: 'Hello',
-    phonetic: '/həˈloʊ/',
-    translation: 'Xin chào',
-    example: 'Hello! How are you today?',
-    exampleTranslation: 'Xin chào! Hôm nay bạn thế nào?',
-  },
-  {
-    id: 2,
-    word: 'Thank you',
-    phonetic: '/θæŋk juː/',
-    translation: 'Cảm ơn',
-    example: 'Thank you for your help!',
-    exampleTranslation: 'Cảm ơn bạn đã giúp đỡ!',
-  },
-  {
-    id: 3,
-    word: 'Please',
-    phonetic: '/pliːz/',
-    translation: 'Làm ơn',
-    example: 'Please pass me the salt.',
-    exampleTranslation: 'Làm ơn đưa tôi lọ muối.',
-  },
-  {
-    id: 4,
-    word: 'Excuse me',
-    phonetic: '/ɪkˈskjuːz miː/',
-    translation: 'Xin lỗi',
-    example: 'Excuse me, where is the restroom?',
-    exampleTranslation: 'Xin lỗi, nhà vệ sinh ở đâu?',
-  },
-  {
-    id: 5,
-    word: 'Goodbye',
-    phonetic: '/ɡʊdˈbaɪ/',
-    translation: 'Tạm biệt',
-    example: 'Goodbye! See you tomorrow.',
-    exampleTranslation: 'Tạm biệt! Hẹn gặp lại vào ngày mai.',
-  },
-];
+type FlashWord = {
+  id: number;
+  content: string;
+  pronunciation?: string;
+  meaning?: string;
+  example?: string;
+  translateExample?: string;
+  audio?: string;
+  image?: string;
+};
 
 export function FlashcardsPage() {
   const { id } = useParams();
+  const [cards, setCards] = useState<FlashWord[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [knownCards, setKnownCards] = useState<number[]>([]);
   const [unknownCards, setUnknownCards] = useState<number[]>([]);
   const [isComplete, setIsComplete] = useState(false);
 
-  const currentCard = mockFlashcards[currentIndex];
-  const progress = ((knownCards.length + unknownCards.length) / mockFlashcards.length) * 100;
+  useEffect(() => {
+    const topicId = Number(id);
+    if (!topicId) return;
+    topicService.getTopicWords(topicId, { limit: 100 })
+      .then((res) => setCards(res.metaData.words || []))
+      .catch(() => setCards([]));
+  }, [id]);
+
+  const currentCard = cards[currentIndex];
+  const progress = cards.length ? ((knownCards.length + unknownCards.length) / cards.length) * 100 : 0;
 
   const handleNext = () => {
-    if (currentIndex < mockFlashcards.length - 1) {
+    if (!cards.length) return;
+    if (currentIndex < cards.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setIsFlipped(false);
     } else if (!isComplete) {
       setIsComplete(true);
+      const topicId = Number(id);
+      if (topicId) {
+        progressService.completeTopic({ topicId }).catch(() => {});
+      }
     }
   };
 
@@ -139,15 +123,15 @@ export function FlashcardsPage() {
               </div>
               <div className="flex items-center justify-between pt-2 border-t">
                 <span className="font-medium">Total</span>
-                <span className="font-medium">{mockFlashcards.length} cards</span>
+                <span className="font-medium">{cards.length} cards</span>
               </div>
             </CardContent>
           </Card>
 
           <div className="flex gap-3">
-            <Link to={`/vocabulary/${id}`}>
+            <Link to={`/topics/${id}`}>
               <Button variant="outline">
-                Back to Vocabulary
+                Quay lại chủ đề
               </Button>
             </Link>
             <Button onClick={handleRestart}>
@@ -162,16 +146,25 @@ export function FlashcardsPage() {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-4xl space-y-6">
+      {cards.length === 0 && (
+        <div className="text-center py-20">
+          <h2 className="text-2xl font-semibold mb-2">Không có từ vựng trong chủ đề này</h2>
+          <p className="text-muted-foreground mb-4">Hãy quay lại chủ đề và chọn chủ đề khác</p>
+          <Link to={`/topics/${id}`}>
+            <Button>Quay lại chủ đề</Button>
+          </Link>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Link to={`/vocabulary/${id}`}>
+        <Link to={`/topics/${id}`}>
           <Button variant="ghost" size="sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
+            Quay lại
           </Button>
         </Link>
         <Badge variant="outline">
-          {currentIndex + 1} / {mockFlashcards.length}
+          {currentIndex + 1} / {cards.length || 0}
         </Badge>
       </div>
 
@@ -220,17 +213,30 @@ export function FlashcardsPage() {
                   className="absolute inset-0 backface-hidden border-2 hover:shadow-xl transition-shadow"
                   style={{ backfaceVisibility: 'hidden' }}
                 >
-                  <CardContent className="h-full flex flex-col items-center justify-center p-8 space-y-6">
-                    <div className="text-center space-y-4">
-                      <h2 className="text-5xl font-bold">{currentCard.word}</h2>
+                  <CardContent className="h-full flex flex-col p-8">
+                    {currentCard?.image && currentCard.image !== 'N/A' && (
+                      <div className="w-full h-40 rounded-xl overflow-hidden bg-muted mb-6">
+                        <img
+                          src={currentCard.image}
+                          alt={currentCard.content}
+                          className="w-full h-full object-cover object-center"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
+                      <h2 className="text-5xl font-bold">{currentCard?.content}</h2>
                       <div className="flex items-center justify-center gap-2">
-                        <p className="text-xl text-muted-foreground">{currentCard.phonetic}</p>
-                        <button className="text-primary hover:text-primary/80 transition-colors">
+                        <p className="text-xl text-muted-foreground">{currentCard?.pronunciation}</p>
+                        <button 
+                          className="text-primary hover:text-primary/80 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); if (currentCard?.audio) { new Audio(currentCard.audio).play(); } }}
+                        >
                           <Volume2 className="w-6 h-6" />
                         </button>
                       </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground text-center mt-6">
                       Click to see translation
                     </p>
                   </CardContent>
@@ -244,15 +250,15 @@ export function FlashcardsPage() {
                     transform: 'rotateY(180deg)'
                   }}
                 >
-                  <CardContent className="h-full flex flex-col items-center justify-center p-8 space-y-6">
-                    <div className="text-center space-y-4">
-                      <h2 className="text-5xl font-bold">{currentCard.translation}</h2>
-                      <div className="space-y-2 mt-6">
-                        <p className="text-lg italic opacity-90">{currentCard.example}</p>
-                        <p className="text-base opacity-75">{currentCard.exampleTranslation}</p>
+                  <CardContent className="h-full flex flex-col p-8">
+                    <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
+                      <h2 className="text-5xl font-bold">{currentCard?.meaning}</h2>
+                      <div className="space-y-2 mt-4">
+                        <p className="text-lg italic opacity-90">{currentCard?.example}</p>
+                        <p className="text-base opacity-75">{currentCard?.translateExample}</p>
                       </div>
                     </div>
-                    <p className="text-sm opacity-75">
+                    <p className="text-sm opacity-75 text-center mt-6">
                       Click to see word
                     </p>
                   </CardContent>

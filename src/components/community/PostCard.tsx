@@ -70,7 +70,7 @@ export function PostCard({
   };
 
   const renderImages = () => {
-    if (post.images.length === 0) return null;
+    if (!post.images || post.images.length === 0) return null;
 
     if (post.images.length === 1) {
       return (
@@ -190,7 +190,7 @@ export function PostCard({
     }
     navigate(`/community/${post.id}`);
   };
-
+  
   return (
     <>
       <div 
@@ -204,8 +204,8 @@ export function PostCard({
               className="w-10 h-10 cursor-pointer" 
               onClick={handleUserNameClick}
             >
-              <AvatarImage src={post.user.avatar} alt={post.user.name} />
-              <AvatarFallback>{post.user.name.slice(0, 2)}</AvatarFallback>
+              <AvatarImage src={post.user.avatar} alt={post.user.name[0]} />
+              <AvatarFallback>{post.user.name[0]}</AvatarFallback>
             </Avatar>
             <div>
               <p 
@@ -231,12 +231,12 @@ export function PostCard({
             <DropdownMenuContent align="end">
               {isOwnPost ? (
                 <>
-                  <DropdownMenuItem onClick={() => onEdit?.(post)}>
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(post); }}>
                     <Edit className="w-4 h-4 mr-2" />
                     Chỉnh sửa
                   </DropdownMenuItem>
                   <DropdownMenuItem 
-                    onClick={() => onDelete?.(post.id)}
+                    onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
                     className="text-red-600"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
@@ -244,7 +244,7 @@ export function PostCard({
                   </DropdownMenuItem>
                 </>
               ) : (
-                <DropdownMenuItem onClick={() => onReport?.(post.id)}>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onReport?.(post.id); }}>
                   <Flag className="w-4 h-4 mr-2" />
                   Báo cáo vi phạm
                 </DropdownMenuItem>

@@ -5,6 +5,9 @@ import { Badge } from '../../ui/badge';
 import { Progress } from '../../ui/progress';
 import { ArrowLeft, Lock, CheckCircle2, Clock, BookOpen } from 'lucide-react';
 import { getCourseById, getTopicsByCourseId } from '../../../utils/mockData';
+import { useEffect, useState } from 'react';
+import { courseService } from '../../../services/courseService';
+import { topicService } from '../../../services/topicService';
 
 export function CourseDetailPage() {
   const { id } = useParams();
@@ -18,7 +21,46 @@ export function CourseDetailPage() {
     topicCount: 12,
   };
   const mockTopics = getTopicsByCourseId(id || '3');
-  const completedTopics = mockTopics.filter(t => t.isCompleted).length;
+  const [courseApi, setCourseApi] = useState<any>(null);
+  const [topicsApi, setTopicsApi] = useState<any[]>([]);
+  useEffect(() => {
+    const courseId = Number(id);
+    if (!courseId) return;
+    courseService.getCourseById(courseId)
+      .then((res) => setCourseApi(res.metaData))
+      .catch(() => setCourseApi(null));
+    courseService.getCourseTopics(courseId, { limit: 100 })
+      .then((res) => setTopicsApi(res.metaData.topics || res.metaData || []))
+      .catch(async () => {
+        try {
+          const cr = await courseService.getCourseById(courseId);
+          const tps = cr.metaData.topics || [];
+          const details = await Promise.all(tps.map((t: any) => topicService.getTopicById(t.id).catch(() => null)));
+          setTopicsApi(details.filter((d): d is any => d).map((d) => d.metaData));
+        } catch {}
+      });
+  }, [id]);
+  const topicsData = (topicsApi && topicsApi.length)
+    ? topicsApi.map((t: any) => ({
+        id: t.id,
+        name: t.title,
+        thumbnail: t.thumbnail || '📚',
+        isCompleted: !!t.alreadyLearned,
+        isLocked: false,
+        duration: '',
+        progress: t.alreadyLearned ? 100 : 0,
+      }))
+    : mockTopics;
+  const courseData = courseApi ? {
+    ...mockCourse,
+    name: courseApi.title,
+    description: courseApi.description,
+    level: courseApi.level,
+    totalTopics: courseApi.totalTopic ?? (Array.isArray(courseApi.topics) ? courseApi.topics.length : topicsData.length),
+    topicCount: Array.isArray(courseApi.topics) ? courseApi.topics.length : topicsData.length,
+    progress: topicsData.length ? Math.round((topicsData.filter((t: any) => t.isCompleted).length / topicsData.length) * 100) : 0,
+  } : mockCourse;
+  const completedTopics = topicsData.filter(t => t.isCompleted).length;
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-5xl space-y-6">
@@ -34,20 +76,20 @@ export function CourseDetailPage() {
       <div className="space-y-4">
         <div className="flex items-start gap-4">
           <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center text-5xl flex-shrink-0">
-            {mockCourse.thumbnail}
+            {courseData.thumbnail}
           </div>
           <div className="flex-1 space-y-2">
             <div>
-              <h1 className="text-3xl font-bold">{mockCourse.name}</h1>
-              <p className="text-muted-foreground mt-1">{mockCourse.description}</p>
+              <h1 className="text-3xl font-bold">{courseData.name}</h1>
+              <p className="text-muted-foreground mt-1">{courseData.description}</p>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <Badge className="bg-success/10 text-success border-success/20" variant="outline">
-                {mockCourse.level}
+                {courseData.level}
               </Badge>
               <div className="flex items-center gap-1">
                 <BookOpen className="w-4 h-4" />
-                <span>{mockCourse.totalTopics} chủ đề</span>
+                <span>{courseData.totalTopics} chủ đề</span>
               </div>
             </div>
           </div>
@@ -59,12 +101,12 @@ export function CourseDetailPage() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Tiến độ khóa học</span>
               <span className="text-sm text-muted-foreground">
-                {completedTopics} / {mockCourse.topicCount} chủ đề
+                {completedTopics} / {courseData.topicCount} chủ đề
               </span>
             </div>
-            <Progress value={mockCourse.progress} className="h-3" />
+            <Progress value={courseData.progress} className="h-3" />
             <p className="text-sm text-muted-foreground mt-2">
-              {mockCourse.progress}% hoàn thành
+              {courseData.progress}% hoàn thành
             </p>
           </CardContent>
         </Card>
@@ -73,9 +115,9 @@ export function CourseDetailPage() {
       {/* Topics List */}
       <div className="space-y-3">
         <h2 className="text-xl font-semibold">Các chủ đề</h2>
-        {mockTopics.map((topic, index) => {
+        {topicsData.map((topic, index) => {
           const isNextTopic = !topic.isCompleted && 
-            mockTopics.slice(0, index).every(t => t.isCompleted) &&
+            topicsData.slice(0, index).every(t => t.isCompleted) &&
             !topic.isLocked;
 
           return (
@@ -88,7 +130,7 @@ export function CourseDetailPage() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-4">
                   {/* Topic Icon & Status */}
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 text-3xl ${
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 ${
                     topic.isCompleted 
                       ? 'bg-success/10' 
                       : topic.isLocked
@@ -100,7 +142,16 @@ export function CourseDetailPage() {
                     ) : topic.isLocked ? (
                       <Lock className="w-6 h-6 text-muted-foreground" />
                     ) : (
-                      topic.thumbnail
+                      typeof topic.thumbnail === 'string' && /^(https?:\/\/|data:image)/.test(topic.thumbnail) ? (
+                        <img
+                          src={topic.thumbnail}
+                          alt={topic.name}
+                          className="w-full h-full object-cover rounded-2xl"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <span className="text-3xl">📚</span>
+                      )
                     )}
                   </div>
 
@@ -110,10 +161,7 @@ export function CourseDetailPage() {
                       <div className="flex-1">
                         <h3 className="font-semibold">{topic.name}</h3>
                         <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <BookOpen className="w-3 h-3" />
-                            <span>{topic.wordCount} từ</span>
-                          </div>
+                          
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Clock className="w-3 h-3" />
                             <span>{topic.duration}</span>
@@ -158,7 +206,7 @@ export function CourseDetailPage() {
       </div>
 
       {/* Continue Button */}
-      {mockCourse.progress < 100 && (
+      {courseData.progress < 100 && (
         <div className="sticky bottom-4 md:bottom-6">
           <Card className="border-2 border-primary shadow-lg">
             <CardContent className="p-4">
@@ -169,7 +217,7 @@ export function CourseDetailPage() {
                     Tiếp tục từ nơi bạn đã dừng lại
                   </p>
                 </div>
-                <Link to={`/topics/${mockTopics.find(t => !t.isCompleted && !t.isLocked)?.id}`}>
+                <Link to={`/topics/${topicsData.find(t => !t.isCompleted && !t.isLocked)?.id}`}>
                   <Button size="lg">
                     Tiếp tục học
                   </Button>
@@ -181,7 +229,7 @@ export function CourseDetailPage() {
       )}
 
       {/* Completion */}
-      {mockCourse.progress === 100 && (
+      {courseData.progress === 100 && (
         <Card className="border-2 border-success/20 bg-gradient-to-br from-success/5 to-transparent">
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row items-center gap-6">

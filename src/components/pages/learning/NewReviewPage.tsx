@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -13,24 +13,32 @@ import {
   Check
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { progressService } from '../../../services/progressService';
 
-const reviewStats = {
-  dueToday: 6,
-  totalCards: 487,
-  masteredCards: 245,
-  learningCards: 189,
-  newCards: 53,
+const levelColorMap: Record<string, string> = {
+  'NEW': '#E9372D',
+  'LEARNING': '#FEC107',
+  'REVIEWING': '#0FA9F5',
+  'MASTERED': '#3D47BA',
+};
+
+const defaultReviewStats = {
+  dueToday: 0,
+  totalCards: 0,
+  masteredCards: 0,
+  learningCards: 0,
+  newCards: 0,
 };
 
 // Data cho biểu đồ
-const levelData = [
-  { level: '1', count: 2, fill: '#E9372D' }, // Red
-  { level: '2', count: 1, fill: '#FEC107' }, // Yellow
-  { level: '3', count: 0, fill: '#0FA9F5' }, // Blue
-  { level: '4', count: 3, fill: '#3D47BA' }, // Purple
+const defaultLevelData = [
+  { level: '1', count: 0, fill: '#E9372D' },
+  { level: '2', count: 0, fill: '#FEC107' },
+  { level: '3', count: 0, fill: '#0FA9F5' },
+  { level: '4', count: 0, fill: '#3D47BA' },
 ];
 
-// Mock questions
+// Mock questions (fallback)
 const mockQuestions = [
   {
     id: 1,
@@ -90,25 +98,89 @@ const mockQuestions = [
 ];
 
 export function NewReviewPage() {
+  const [reviewStats, setReviewStats] = useState(defaultReviewStats);
+  const [levelData, setLevelData] = useState(defaultLevelData);
   const [isReviewing, setIsReviewing] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | boolean | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [questions, setQuestions] = useState<any[]>(mockQuestions);
+  const [progressMap, setProgressMap] = useState<Record<number, number>>({});
+  const getStats = async () => {
+  try {
+    const res1 = await progressService.getWordReview();
+    setReviewStats((prev) => ({
+      ...prev,
+      dueToday: (res1.metaData.words || []).length,
+    }));
+  } catch {}
 
-  const currentQuestion = mockQuestions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / mockQuestions.length) * 100;
+  try {
+    const res2 = await progressService.getSummary();
+    const stats = res2.metaData.statistics || [];
+    const built = stats.map((s) => ({
+      level: String(s.level),
+      count: s.wordCount,
+      fill: levelColorMap[String(s.level)] || '#0FA9F5',
+    }));
+    setLevelData(built.length ? built : defaultLevelData);
+  } catch {}
+};
+
+  useEffect(() => {
+    getStats();
+  }, []);
+
+  const currentQuestion = questions[currentQuestionIndex];
+  const progress = ((currentQuestionIndex + 1) / Math.max(questions.length, 1)) * 100;
   
   // Check if current answer is correct
   const isAnswerCorrect = selectedAnswer === currentQuestion.correctAnswer;
 
-  const handleStartReview = () => {
+  const handleStartReview = async () => {
     setIsReviewing(true);
     setCurrentQuestionIndex(0);
     setScore(0);
     setSelectedAnswer(null);
     setShowResult(false);
+    setProgressMap({});
+    try {
+      const res = await progressService.getWordReview();
+      const items = res.metaData.words || [];
+      if (items.length === 0) {
+        setQuestions([]);
+        setIsReviewing(false);
+        setShowCompleteDialog(true);
+        return;
+      }
+      const pool = items.map((i: any) => i.word.content);
+      const pickDistractors = (correct: string) => {
+        const others = pool.filter((t) => t !== correct);
+        const shuffled = others.sort(() => Math.random() - 0.5);
+        return shuffled.slice(0, Math.min(3, Math.max(0, shuffled.length)));
+      };
+      const built = items.map((i: any) => {
+        const correct = i.word.content;
+        const options = [correct, ...pickDistractors(correct)].sort(() => Math.random() - 0.5);
+        const correctIndex = options.findIndex((o) => o === correct);
+        return {
+          id: i.word.id,
+          wordId: i.word.id,
+          type: 'definition-to-term',
+          definition: i.word.meaning || 'Chọn từ đúng',
+          term: i.word.content,
+          phonetic: i.word.pronunciation,
+          audioUrl: i.word.audio,
+          options,
+          correctAnswer: correctIndex,
+        };
+      });
+      setQuestions(built);
+    } catch {
+      setQuestions(mockQuestions);
+    }
   };
 
   const handleAnswer = (answer: number | boolean) => {
@@ -120,10 +192,19 @@ export function NewReviewPage() {
     if (isCorrect) {
       setScore(score + 1);
     }
+    if (typeof currentQuestion.wordId === 'number') {
+  setProgressMap((prev) => ({
+    ...prev,
+    [currentQuestion.wordId]: isCorrect
+      ? (prev[currentQuestion.wordId] ?? 0)   // đúng → giữ nguyên hoặc = 0
+      : (prev[currentQuestion.wordId] || 0) + 1,  // sai → tăng lên
+  }));
+}
+
   };
 
   const handleNext = () => {
-    if (currentQuestionIndex < mockQuestions.length - 1) {
+    if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       setSelectedAnswer(null);
       setShowResult(false);
@@ -131,12 +212,25 @@ export function NewReviewPage() {
       // Finish review
       setIsReviewing(false);
       setShowCompleteDialog(true);
+      const payload = Object.entries(progressMap).map(([wordId, wrongCount]) => ({
+        wordId: Number(wordId),
+        wrongCount: wrongCount as number,
+        reviewedDate: new Date().toISOString(),
+      }));
+      console.log(payload)
+      if (payload.length > 0) {
+        progressService.updateWordProgress({ wordProgress: payload }).catch(() => {});
+      }
     }
   };
 
   const playAudio = () => {
-    // Simulate audio playback
-    console.log('Playing audio for:', currentQuestion.term);
+    const audio = (currentQuestion as any)?.audioUrl;
+    if (audio) {
+      try {
+        new Audio(audio).play();
+      } catch {}
+    }
   };
 
   if (isReviewing) {
@@ -152,7 +246,7 @@ export function NewReviewPage() {
                 }} />
               </div>
               <span className="text-sm font-medium text-muted-foreground">
-                {currentQuestionIndex + 1}/{mockQuestions.length}
+                {currentQuestionIndex + 1}/{questions.length}
               </span>
             </div>
           </div>
@@ -343,22 +437,25 @@ export function NewReviewPage() {
               <div className="space-y-2">
                 <h2 className="text-3xl font-bold text-gray-900">Hoàn tất ôn tập!</h2>
                 <p className="text-muted-foreground">
-                  Bạn đã ôn tập thành công <span className="font-semibold text-[#1AB1F6]">{mockQuestions.length} từ</span>
+                  Bạn đã ôn tập thành công <span className="font-semibold text-[#1AB1F6]">{questions.length} từ</span>
                 </p>
               </div>
               <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-6 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Số câu đúng:</span>
-                  <span className="font-bold text-green-600">{score}/{mockQuestions.length}</span>
+                  <span className="font-bold text-green-600">{score}/{questions.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Tỷ lệ chính xác:</span>
-                  <span className="font-bold text-[#1AB1F6]">{Math.round((score / mockQuestions.length) * 100)}%</span>
+                  <span className="font-bold text-[#1AB1F6]">{questions.length ? Math.round((score / questions.length) * 100) : 0}%</span>
                 </div>
               </div>
               <Button 
                 size="lg" 
-                onClick={() => setShowCompleteDialog(false)}
+                onClick={() => {
+                  setShowCompleteDialog(false)
+                  getStats()
+                }}
                 className="w-full bg-gradient-to-r from-[#1AB1F6] to-[#00d4ff] hover:from-[#1599d6] hover:to-[#00bfe6] shadow-lg shadow-blue-200"
               >
                 Hoàn tất
@@ -394,6 +491,7 @@ export function NewReviewPage() {
             <Button 
               size="lg" 
               onClick={handleStartReview}
+              disabled={reviewStats.dueToday === 0}
               className="bg-gradient-to-r from-[#1AB1F6] to-[#00d4ff] hover:from-[#1599d6] hover:to-[#00bfe6] px-10 shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:scale-105"
             >
               <Play className="w-5 h-5 mr-2" />

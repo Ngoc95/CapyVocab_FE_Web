@@ -201,3 +201,23 @@ export const apiDelete = <T>(endpoint: string): Promise<ApiResponse<T>> => {
   return apiRequest<T>(endpoint, { method: 'DELETE' });
 };
 
+// UPLOAD (FormData)
+export const apiUpload = async <T>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> => {
+  const apiEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${(import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8081'}${apiEndpoint}`;
+  const token = getAuthToken();
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    let errorMessage = `API upload failed: ${response.statusText}`;
+    try {
+      const errorData = await response.json();
+      if (errorData.message) errorMessage = errorData.message;
+    } catch {}
+    throw new Error(errorMessage);
+  }
+  return response.json();
+};

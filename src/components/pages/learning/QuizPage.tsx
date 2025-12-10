@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Card, CardContent } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -6,50 +6,53 @@ import { Badge } from '../../ui/badge';
 import { Progress } from '../../ui/progress';
 import { ArrowLeft, Check, X, Award, RotateCcw } from 'lucide-react';
 import { motion } from 'motion/react';
+import { topicService } from '../../../services/topicService';
 
-const mockQuizQuestions = [
-  {
-    id: 1,
-    question: 'What is the meaning of "Hello"?',
-    options: ['Xin chào', 'Tạm biệt', 'Cảm ơn', 'Xin lỗi'],
-    correctAnswer: 0,
-  },
-  {
-    id: 2,
-    question: 'Choose the correct translation for "Thank you"',
-    options: ['Làm ơn', 'Cảm ơn', 'Xin lỗi', 'Tạm biệt'],
-    correctAnswer: 1,
-  },
-  {
-    id: 3,
-    question: 'What does "Please" mean in Vietnamese?',
-    options: ['Xin chào', 'Tạm biệt', 'Làm ơn', 'Cảm ơn'],
-    correctAnswer: 2,
-  },
-  {
-    id: 4,
-    question: 'Select the correct meaning of "Goodbye"',
-    options: ['Xin chào', 'Cảm ơn', 'Xin lỗi', 'Tạm biệt'],
-    correctAnswer: 3,
-  },
-  {
-    id: 5,
-    question: '"Excuse me" translates to:',
-    options: ['Tạm biệt', 'Xin lỗi', 'Làm ơn', 'Xin chào'],
-    correctAnswer: 1,
-  },
-];
+type QuizQuestion = { id: number; question: string; options: string[]; correctAnswer: number };
 
 export function QuizPage() {
   const { id } = useParams();
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-  const [answers, setAnswers] = useState<(number | null)[]>(new Array(mockQuizQuestions.length).fill(null));
+  const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
 
-  const question = mockQuizQuestions[currentQuestion];
-  const progress = ((currentQuestion + 1) / mockQuizQuestions.length) * 100;
+  useEffect(() => {
+    const topicId = Number(id);
+    if (!topicId) return;
+    topicService.getTopicWords(topicId, { limit: 100 })
+      .then((res) => {
+        const words = res.metaData.words || [];
+        const pool = words.map((w: any) => w.content);
+        const pickDistractors = (correct: string) => {
+          const others = pool.filter((t) => t !== correct);
+          const shuffled = others.sort(() => Math.random() - 0.5);
+          return shuffled.slice(0, Math.min(3, Math.max(0, shuffled.length)));
+        };
+        const built: QuizQuestion[] = words.map((w: any) => {
+          const correct = w.content;
+          const options = [correct, ...pickDistractors(correct)].sort(() => Math.random() - 0.5);
+          const correctIndex = options.findIndex((o) => o === correct);
+          return {
+            id: w.id,
+            question: w.meaning || 'Chọn từ đúng',
+            options,
+            correctAnswer: correctIndex,
+          };
+        });
+        setQuestions(built);
+        setAnswers(new Array(built.length).fill(null));
+      })
+      .catch(() => {
+        setQuestions([]);
+        setAnswers([]);
+      });
+  }, [id]);
+
+  const question = questions[currentQuestion];
+  const progress = ((currentQuestion + 1) / Math.max(questions.length, 1)) * 100;
 
   const handleSelectAnswer = (index: number) => {
     setSelectedAnswer(index);
@@ -63,7 +66,7 @@ export function QuizPage() {
       setSelectedAnswer(null);
       setShowResult(false);
 
-      if (currentQuestion < mockQuizQuestions.length - 1) {
+      if (currentQuestion < Math.max(questions.length - 1, 0)) {
         setCurrentQuestion(currentQuestion + 1);
       } else {
         setIsComplete(true);
@@ -78,7 +81,7 @@ export function QuizPage() {
   const handleRestart = () => {
     setCurrentQuestion(0);
     setSelectedAnswer(null);
-    setAnswers(new Array(mockQuizQuestions.length).fill(null));
+    setAnswers(new Array(questions.length).fill(null));
     setShowResult(false);
     setIsComplete(false);
   };
@@ -86,14 +89,14 @@ export function QuizPage() {
   const calculateScore = () => {
     let correct = 0;
     answers.forEach((answer, index) => {
-      if (answer === mockQuizQuestions[index].correctAnswer) {
+      if (answer === questions[index]?.correctAnswer) {
         correct++;
       }
     });
     return {
       correct,
-      total: mockQuizQuestions.length,
-      percentage: Math.round((correct / mockQuizQuestions.length) * 100),
+      total: questions.length,
+      percentage: Math.round(questions.length ? (correct / questions.length) * 100 : 0),
     };
   };
 
@@ -167,7 +170,7 @@ export function QuizPage() {
           </Card>
 
           <div className="flex gap-3">
-            <Link to={`/vocabulary/${id}`}>
+            <Link to={`/topics/${id}`}>
               <Button variant="outline">Back to Vocabulary</Button>
             </Link>
             <Button onClick={handleRestart}>
@@ -182,25 +185,32 @@ export function QuizPage() {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-4xl space-y-6">
+      {questions.length === 0 && !isComplete && (
+        <div className="text-center py-20">
+          <h2 className="text-2xl font-semibold mb-2">Không có câu hỏi quiz cho chủ đề này</h2>
+          <p className="text-muted-foreground mb-4">Hãy quay lại chủ đề và chọn chủ đề khác</p>
+          <Link to={`/topics/${id}`}>
+            <Button>Quay lại chủ đề</Button>
+          </Link>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Link to={`/vocabulary/${id}`}>
+        <Link to={`/topics/${id}`}>
           <Button variant="ghost" size="sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
         </Link>
         <Badge variant="outline">
-          Question {currentQuestion + 1} / {mockQuizQuestions.length}
+          Question {currentQuestion + 1} / {questions.length}
         </Badge>
       </div>
 
       {/* Progress */}
       <div className="space-y-2">
         <Progress value={progress} className="h-2" />
-        <p className="text-sm text-muted-foreground text-right">
-          {Math.round(progress)}% Complete
-        </p>
+        <p className="text-sm text-muted-foreground text-right">{Math.round(progress)}% Complete</p>
       </div>
 
       {/* Question Card */}
@@ -214,14 +224,14 @@ export function QuizPage() {
           <CardContent className="pt-8 pb-6 space-y-6">
             <div>
               <p className="text-sm text-muted-foreground mb-2">Question {currentQuestion + 1}</p>
-              <h2 className="text-2xl font-semibold">{question.question}</h2>
+              <h2 className="text-2xl font-semibold">{question?.question}</h2>
             </div>
 
             {/* Options */}
             <div className="space-y-3">
-              {question.options.map((option, index) => {
+              {question?.options?.map((option, index) => {
                 const isSelected = selectedAnswer === index;
-                const isCorrect = index === question.correctAnswer;
+                const isCorrect = index === question?.correctAnswer;
                 const showCorrect = showResult && isCorrect;
                 const showWrong = showResult && isSelected && !isCorrect;
 
@@ -286,7 +296,7 @@ export function QuizPage() {
                 <p className="text-sm text-muted-foreground mt-1">
                   {selectedAnswer === question.correctAnswer
                     ? 'Great job! You got it right.'
-                    : `The correct answer is: ${question.options[question.correctAnswer]}`}
+                      : `The correct answer is: ${question?.options?.[question?.correctAnswer]}`}
                 </p>
               </motion.div>
             )}
@@ -304,12 +314,10 @@ export function QuizPage() {
           Previous
         </Button>
         {!showResult ? (
-          <Button onClick={handleCheckAnswer} disabled={selectedAnswer === null}>
-            Check Answer
-          </Button>
+          <Button onClick={handleCheckAnswer} disabled={selectedAnswer === null}>Check Answer</Button>
         ) : (
           <Button onClick={handleNext}>
-            {currentQuestion < mockQuizQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'}
+            {currentQuestion < Math.max(questions.length - 1, 0) ? 'Next Question' : 'Finish Quiz'}
           </Button>
         )}
       </div>

@@ -76,8 +76,8 @@ export function PostHistoryDialog({
                   {/* Header */}
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="w-8 h-8">
-                      <AvatarImage src={post.user.avatar} alt={post.user.name} />
-                      <AvatarFallback>{post.user.name.slice(0, 2)}</AvatarFallback>
+                      <AvatarImage src={post.user.avatar} alt={post.user.name[0]} />
+                      <AvatarFallback>{post.user.name[0]}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <p className="text-sm text-gray-900">{post.user.name}</p>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '../../ui/button';
@@ -10,6 +10,7 @@ import { Label } from '../../ui/label';
 import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner';
+import { exerciseService } from '../../../services/exerciseService';
 
 // Mock data
 const mockQuiz = [
@@ -51,9 +52,43 @@ export function MaterialQuizPage() {
   const [showResult, setShowResult] = useState(false);
   const [timeLeft, setTimeLeft] = useState(mockQuiz[0].timeLimit);
   const [quizCompleted, setQuizCompleted] = useState(false);
+  const [questions, setQuestions] = useState<any[]>(mockQuiz);
 
-  const currentQuestion = mockQuiz[currentIndex];
-  const progress = ((currentIndex + 1) / mockQuiz.length) * 100;
+  useEffect(() => {
+    const folderId = Number(id);
+    if (!folderId) return;
+    exerciseService.getFolderById(folderId)
+      .then((res) => {
+        const server = res.metaData;
+        const qz = (server.quizzes || []).flatMap((q: any) => q.question || []);
+        if (qz.length) {
+          const mapped = qz.map((q: any, idx: number) => {
+            const options = q.options || [];
+            const correctStrings = q.correctAnswers || [];
+            const correctIndexes = correctStrings
+              .map((ans: string) => options.indexOf(ans))
+              .filter((i: number) => i >= 0);
+            return {
+              id: `q-${idx}`,
+              type: q.type === 'fill-in' ? 'fill-in' : 'multiple-choice',
+              question: q.question,
+              answerMode: correctIndexes.length <= 1 ? 'single' : 'multiple',
+              options,
+              correctAnswers: q.type === 'fill-in' ? [] : correctIndexes,
+              correctAnswer: q.type === 'fill-in' ? (correctStrings[0] || '') : undefined,
+              explanation: q.explanation,
+              timeLimit: q.time || 30,
+            };
+          });
+          setQuestions(mapped);
+          setTimeLeft(mapped[0].timeLimit || 30);
+        }
+      })
+      .catch(() => {});
+  }, [id]);
+
+  const currentQuestion = questions[currentIndex];
+  const progress = ((currentIndex + 1) / questions.length) * 100;
 
   const handleMultipleChoiceSingle = (value: string) => {
     setUserAnswers({
@@ -113,10 +148,10 @@ export function MaterialQuizPage() {
   };
 
   const handleNext = () => {
-    if (currentIndex < mockQuiz.length - 1) {
+    if (currentIndex < questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setShowResult(false);
-      setTimeLeft(mockQuiz[currentIndex + 1].timeLimit);
+      setTimeLeft(currentQuestion?.time || 30);
     } else {
       setQuizCompleted(true);
     }
@@ -124,13 +159,13 @@ export function MaterialQuizPage() {
 
   const calculateScore = () => {
     let correct = 0;
-    mockQuiz.forEach((q, index) => {
+    questions.forEach((q, index) => {
       const userAnswer = userAnswers[index];
       if (q.type === 'multiple-choice') {
-        if (q.answerMode === 'single') {
-          if (userAnswer === q.correctAnswers![0]) correct++;
+        if ((q as any).answerMode === 'single') {
+          if (userAnswer === q.correctAnswers?.[0]) correct++;
         } else {
-          const correctSet = new Set(q.correctAnswers);
+          const correctSet = new Set(q.correctAnswers || []);
           const userSet = new Set(userAnswer || []);
           if (
             correctSet.size === userSet.size &&
@@ -142,13 +177,13 @@ export function MaterialQuizPage() {
       } else {
         if (
           userAnswer?.toLowerCase().trim() ===
-          q.correctAnswer?.toLowerCase().trim()
+          (q.correctAnswer || '').toLowerCase().trim()
         ) {
           correct++;
         }
       }
     });
-    return Math.round((correct / mockQuiz.length) * 100);
+    return Math.round((correct / questions.length) * 100);
   };
 
   if (quizCompleted) {

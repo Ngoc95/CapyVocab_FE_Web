@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Plus, Trash2, Image as ImageIcon, X } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
@@ -13,33 +13,136 @@ import { RadioGroup, RadioGroupItem } from '../../ui/radio-group';
 import { Checkbox } from '../../ui/checkbox';
 import { Separator } from '../../ui/separator';
 import { toast } from 'sonner';
+import { exerciseService, type Question, type Quiz as ServerQuiz } from '../../../services/exerciseService';
+import { postService } from '../../../services/postService';
 import type { Flashcard, QuizQuestion } from '../../../types';
 
 export function CreateMaterialPage() {
   const navigate = useNavigate();
+  const { id: materialId } = useParams();
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
   const [price, setPrice] = useState('0');
   const [isPublic, setIsPublic] = useState(true);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [quizzes, setQuizzes] = useState<QuizQuestion[]>([]);
+  const isEditMode = !!materialId;
 
-  const handleSave = () => {
+  useEffect(() => {
+    const loadMaterial = async () => {
+      if (!isEditMode) return;
+      try {
+        const numericId = Number(materialId);
+        if (Number.isNaN(numericId)) return;
+        const res = await exerciseService.getFolderById(numericId);
+        const folder = res.metaData;
+        setTitle(folder.name || '');
+        // Map flashcards
+        const serverFlashcards = folder.flashCards || [];
+        console.log(serverFlashcards.length)
+        const uiFlashcards: Flashcard[] = serverFlashcards.map((fc, idx) => ({
+          id: `${Date.now()}-${idx}`,
+          term: fc.frontContent || "",
+          definition: fc.backContent || "",
+        }));
+        setFlashcards(uiFlashcards);
+
+        // Map quizzes
+        const serverQuizzes: ServerQuiz[] = folder.quizzes || [];
+        console.log(serverQuizzes.length)
+        const uiQuestions: QuizQuestion[] = [];
+        serverQuizzes.forEach((sq) => {
+          (sq.question || []).forEach((q, idx) => {
+            const options = q.options || [];
+            const correctStrings = q.correctAnswers || [];
+            const correctIndexes = correctStrings
+              .map((ans) => options.indexOf(ans))
+              .filter((i) => i >= 0);
+            const answerMode: 'single' | 'multiple' = correctIndexes.length <= 1 ? 'single' : 'multiple';
+            uiQuestions.push({
+              id: `${Date.now()}-${idx}`,
+              type: q.type === 'fill-in' ? 'fill-in' : 'multiple-choice',
+              question: q.question,
+              answerMode,
+              options,
+              correctAnswers: q.type === 'fill-in' ? [] : correctIndexes,
+              correctAnswer: q.type === 'fill-in' ? (correctStrings[0] || '') : undefined,
+              explanation: q.explanation,
+              timeLimit: q.time,
+            });
+          });
+        });
+        setQuizzes(uiQuestions);
+      } catch (e: any) {
+        toast.error(e?.message || 'Tải học liệu thất bại');
+      }
+    };
+    loadMaterial();
+  }, [isEditMode, materialId]);
+
+  const handleSave = async () => {
     if (!title.trim()) {
       toast.error('Vui lòng nhập tiêu đề học liệu');
       return;
     }
 
-    if (flashcards.length === 0 && quizzes.length === 0) {
-      toast.error('Vui lòng tạo ít nhất một flashcard hoặc quiz');
+    if (isEditMode && flashcards.length === 0 && quizzes.length === 0) {
+      toast.error('Vui lòng thêm flashcard hoặc quiz khi cập nhật');
       return;
     }
 
-    // Generate code
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-    toast.success(`Đã tạo học liệu với mã: ${code}`);
-    navigate('/materials');
+    try {
+      if (isEditMode) {
+        const numericId = Number(materialId);
+        const toServerQuestions: Question[] = quizzes.map((q) => {
+          if (q.type === 'multiple-choice') {
+            const options = q.options || [];
+            const correctIndexes = q.correctAnswers || [];
+            const correctAnswers = correctIndexes
+              .map((i) => options[i])
+              .filter((s) => typeof s === 'string');
+            return {
+              question: q.question,
+              options,
+              correctAnswers,
+              explanation: q.explanation,
+              image: undefined,
+              time: q.timeLimit,
+              type: 'multiple-choice',
+            } as Question;
+          } else {
+            return {
+              question: q.question,
+              options: [],
+              correctAnswers: q.correctAnswer ? [q.correctAnswer] : [],
+              explanation: q.explanation,
+              image: undefined,
+              time: q.timeLimit,
+              type: 'fill-in',
+            } as Question;
+          }
+        });
+        await exerciseService.updateFolder(numericId, {
+          name: title,
+          quizzes: toServerQuestions.length ? [{ title, question: toServerQuestions }] : [],
+          flashCards: flashcards.map((fc) => ({
+            frontContent: fc.term,
+            frontImage: '',
+            backContent: fc.definition,
+            backImage: '',
+          })),
+          price: Number(price || '0'),
+          isPublic,
+        });
+        toast.success('Đã cập nhật học liệu');
+      } else {
+        const res = await exerciseService.createFolder({ name: title, isPublic, price: Number(price || '0') });
+        const folder = res.metaData;
+        toast.success(`Đã tạo học liệu: ${folder.name}`);
+      }
+      navigate('/materials');
+    } catch (e: any) {
+      toast.error(e?.message || 'Tạo học liệu thất bại');
+    }
   };
 
   return (
@@ -50,18 +153,18 @@ export function CreateMaterialPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/materials')}
+            onClick={() => navigate(-1)}
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-1">
-            <h1>Tạo học liệu mới</h1>
+            <h1>{isEditMode ? 'Sửa học liệu' : 'Tạo học liệu mới'}</h1>
             <p className="text-muted-foreground">
-              Tạo bộ flashcard và quiz của riêng bạn
+              {isEditMode ? 'Cập nhật flashcard và quiz của bạn' : 'Tạo bộ flashcard và quiz của riêng bạn'}
             </p>
           </div>
           <Button onClick={handleSave} size="lg">
-            Lưu học liệu
+            {isEditMode ? 'Cập nhật' : 'Lưu học liệu'}
           </Button>
         </div>
 
@@ -78,17 +181,6 @@ export function CreateMaterialPage() {
                 placeholder="VD: Từ vựng IELTS Band 7+"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Mô tả (Tùy chọn)</Label>
-              <Textarea
-                id="description"
-                placeholder="Mô tả ngắn về học liệu của bạn..."
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
@@ -126,7 +218,8 @@ export function CreateMaterialPage() {
         </Card>
 
         {/* Content */}
-        <Card>
+        {isEditMode && (
+          <Card>
           <CardHeader>
             <CardTitle>Nội dung học liệu</CardTitle>
             <CardDescription>
@@ -157,6 +250,7 @@ export function CreateMaterialPage() {
             </Tabs>
           </CardContent>
         </Card>
+      )}
       </div>
     </div>
   );
@@ -189,6 +283,16 @@ function FlashcardEditor({ flashcards, setFlashcards }: FlashcardEditorProps) {
     setFlashcards(flashcards.filter((card) => card.id !== id));
   };
 
+  const uploadImage = async (id: string, side: 'front' | 'back', file?: File) => {
+    if (!file) return;
+    try {
+      const urls = await postService.uploadImages([file]);
+      const url = urls[0] || '';
+      if (side === 'front') updateFlashcard(id, { frontImage: url });
+      else updateFlashcard(id, { backImage: url });
+    } catch (e: any) {}
+  };
+
   return (
     <div className="space-y-4">
       {flashcards.map((card, index) => (
@@ -215,6 +319,20 @@ function FlashcardEditor({ flashcards, setFlashcards }: FlashcardEditorProps) {
                   updateFlashcard(card.id, { term: e.target.value })
                 }
               />
+
+              <div className="space-y-2">
+                <Label>Hình ảnh mặt trước (Tùy chọn)</Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => uploadImage(card.id, 'front', e.target.files?.[0])}
+                  />
+                  {card.frontImage && (
+                    <img src={card.frontImage} alt="front" className="w-16 h-16 object-cover rounded" />
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -242,6 +360,20 @@ function FlashcardEditor({ flashcards, setFlashcards }: FlashcardEditorProps) {
                   updateFlashcard(card.id, { definition: e.target.value })
                 }
               />
+
+              <div className="space-y-2">
+                <Label>Hình ảnh mặt sau (Tùy chọn)</Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => uploadImage(card.id, 'back', e.target.files?.[0])}
+                  />
+                  {card.backImage && (
+                    <img src={card.backImage} alt="back" className="w-16 h-16 object-cover rounded" />
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">

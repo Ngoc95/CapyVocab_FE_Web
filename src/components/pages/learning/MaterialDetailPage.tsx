@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Heart, Eye, Code, Edit, AlertTriangle, MessageSquare, Play, FileText, Lock, ShoppingCart } from 'lucide-react';
 import { Button } from '../../ui/button';
@@ -13,7 +13,18 @@ import { RadioGroup, RadioGroupItem } from '../../ui/radio-group';
 import { toast } from 'sonner';
 import { useAuthStore } from '../../../utils/authStore';
 import type { Material, Comment } from '../../../types';
-
+import { exerciseService } from '../../../services/exerciseService';
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction
+} from "../../ui/alert-dialog";
 // Mock data
 const mockMaterial: Material = {
   id: '1',
@@ -57,35 +68,75 @@ export function MaterialDetailPage() {
   const [reportReason, setReportReason] = useState('');
   const [showPayment, setShowPayment] = useState(false);
 
-  const isOwner = material.authorId === user?.id;
+  useEffect(() => {
+    const folderId = Number(id);
+    if (!folderId) return;
+    exerciseService.getFolderById(folderId)
+      .then((res) => {
+        const f = res.metaData;
+        const mapped: Material = {
+          id: String(f.id),
+          code: f.code || '',
+          title: f.name,
+          description: '',
+          authorId: String(f.createdBy?.id || ''),
+          authorName: f.createdBy?.username || '',
+          authorEmail: f.createdBy?.email || '',
+          isPublic: !!f.isPublic,
+          price: Number(f.price) || 0,
+          flashcards: (f.flashCards || []).map((fc: any, idx: number) => ({ id: String(fc.id ?? idx), term: fc.frontContent || '', definition: fc.backContent || '' })),
+          quizzes: (f.quizzes || []).flatMap((q: any) => (q.question || []).map((qq: any, i: number) => ({ id: `${q.id}-${i}`, term: qq.question, definition: '' }))),
+          likes: f.voteCount || 0,
+          views: f.totalAttemptCount || 0,
+          comments: [],
+          isPurchased: true,
+          createdAt: f.createdAt,
+          updatedAt: f.createdAt,
+        };
+        setMaterial(mapped);
+        setIsLiked(!!f.isAlreadyVote);
+      })
+      .catch(() => {});
+  }, [id]);
+
+  const isOwner = String(material.authorId) === String(user?.id || '');
   const needsPurchase = material.price > 0 && !material.isPurchased && !isOwner;
 
-  const handleLike = () => {
+  const handleLike = async () => {
     setIsLiked(!isLiked);
     setMaterial({
       ...material,
       likes: isLiked ? material.likes - 1 : material.likes + 1,
     });
+    try {
+      const folderId = Number(id);
+      if (!Number.isNaN(folderId)) {
+        if (isLiked) await exerciseService.unlikeFolder(folderId);
+        else await exerciseService.likeFolder(folderId);
+      }
+    } catch {}
     toast.success(isLiked ? 'Đã bỏ thích' : 'Đã thích học liệu này');
   };
 
-  const handleComment = () => {
+  const handleComment = async () => {
     if (!commentText.trim()) return;
-
-    const newComment: Comment = {
-      id: Date.now().toString(),
-      userId: user?.id || '',
-      userName: user?.name || '',
-      content: commentText,
-      createdAt: new Date().toISOString(),
-    };
-
-    setMaterial({
-      ...material,
-      comments: [newComment, ...material.comments],
-    });
-    setCommentText('');
-    toast.success('Đã thêm nhận xét');
+    try {
+      const folderId = Number(id);
+      const res = await exerciseService.addComment(folderId, { content: commentText });
+      const c = res.metaData;
+      const newComment: Comment = {
+        id: String(c.id),
+        userId: String(c.userId),
+        userName: c.username,
+        content: c.content,
+        createdAt: c.createdAt,
+      };
+      setMaterial({ ...material, comments: [newComment, ...material.comments] });
+      setCommentText('');
+      toast.success('Đã thêm nhận xét');
+    } catch (e: any) {
+      toast.error(e?.message || 'Thêm nhận xét thất bại');
+    }
   };
 
   const handleReport = (reason: string) => {
@@ -143,7 +194,7 @@ export function MaterialDetailPage() {
               <div className="flex items-center gap-2">
                 <Avatar className="w-6 h-6">
                   <AvatarFallback className="text-xs">
-                    {material.authorName[0].toUpperCase()}
+                    {(material.authorName?.[0] || '?').toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <span>{material.authorEmail}</span>
@@ -156,13 +207,53 @@ export function MaterialDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             {isOwner ? (
-              <Button
-                variant="outline"
-                onClick={() => navigate(`/materials/${id}/edit`)}
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                Chỉnh sửa
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/materials/${id}/edit`)}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Chỉnh sửa
+                </Button>
+                <AlertDialog>
+  <AlertDialogTrigger asChild>
+    <Button variant="destructive">
+      Xoá
+    </Button>
+  </AlertDialogTrigger>
+
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Bạn có chắc muốn xoá học liệu?</AlertDialogTitle>
+      <AlertDialogDescription>
+        Hành động này không thể hoàn tác. Tất cả flashcards và quizzes sẽ bị xoá vĩnh viễn.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+
+    <AlertDialogFooter>
+      <AlertDialogCancel>Huỷ</AlertDialogCancel>
+      <AlertDialogAction
+      className="bg-red-600 hover:bg-red-700"
+        onClick={async () => {
+          try {
+            const folderId = Number(id);
+            if (!Number.isNaN(folderId)) {
+              await exerciseService.deleteFolder(folderId);
+              toast.success("Đã xoá học liệu");
+              navigate("/materials");
+            }
+          } catch (e: any) {
+            toast.error(e?.message || "Xoá học liệu thất bại");
+          }
+        }}
+      >
+        Xoá
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+
+              </>
             ) : (
               <Dialog>
                 <DialogTrigger asChild>
@@ -339,7 +430,7 @@ export function MaterialDetailPage() {
                   <div key={comment.id} className="flex gap-3">
                     <Avatar className="w-8 h-8">
                       <AvatarFallback className="text-xs">
-                        {comment.userName[0].toUpperCase()}
+                        {comment.userName?.[0] || '?'.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">

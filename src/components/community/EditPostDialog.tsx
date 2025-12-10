@@ -30,7 +30,7 @@ interface Post {
 interface EditPostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (postId: string, content: string, hashtags: string[], images: File[]) => void;
+  onSubmit: (postId: string, content: string, hashtags: string[], newImages: File[], existingImages: string[]) => void;
   post: Post | null;
 }
 
@@ -111,7 +111,7 @@ export function EditPostDialog({
     }
 
     if (post) {
-      onSubmit(post.id, content, hashtags, images);
+      onSubmit(post.id, content, hashtags, images, existingImages);
     }
     
     handleClose();

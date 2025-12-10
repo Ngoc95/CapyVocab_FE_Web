@@ -9,68 +9,83 @@ import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { useAuthStore } from '../../../utils/authStore';
 import type { Material } from '../../../types';
+import { exerciseService } from '../../../services/exerciseService';
+import { useEffect } from 'react';
 
-// Mock data học liệu
-const mockMaterials: Material[] = [
-  {
-    id: '1',
-    code: 'FUYI5K',
-    title: 'Từ vựng IELTS',
-    description: 'Bộ từ vựng IELTS cơ bản cho người mới bắt đầu',
-    authorId: 'user2',
-    authorName: 'User001',
-    authorEmail: 'User001@gmail.com',
-    isPublic: true,
-    price: 0,
-    flashcards: [{
-      id: 'f1',
-      term: 'Academic',
-      definition: 'Thuộc về học thuật',
-    }],
-    quizzes: [],
-    likes: 0,
-    views: 0,
-    comments: [],
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15',
-  },
-  {
-    id: '2',
-    code: 'ABC123',
-    title: 'ahihi',
-    description: 'Bộ từ vựng giao tiếp hàng ngày',
-    authorId: 'user3',
-    authorName: 'duongkhanhngoc2005',
-    authorEmail: 'duongkhanhngoc2005@gmail.com',
-    isPublic: true,
-    price: 100000,
-    flashcards: [],
-    quizzes: [{
-      id: 'q1',
-      type: 'multiple-choice',
-      question: 'What is the capital of Vietnam?',
-      answerMode: 'single',
-      options: ['Hanoi', 'Ho Chi Minh', 'Da Nang', 'Hue'],
-      correctAnswers: [0],
-      timeLimit: 30,
-    }],
-    likes: 0,
-    views: 0,
-    comments: [],
-    createdAt: '2024-01-10',
-    updatedAt: '2024-01-10',
-  },
-];
+const mockMaterials: Material[] = [];
 
 export function MaterialsPage() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('public');
+  const [serverFolders, setServerFolders] = useState<any[]>([]);
+
+  useEffect(() => {
+    exerciseService.getFolders({ page: 1, limit: 20 })
+      .then((res) => setServerFolders(res.metaData.folders || []))
+      .catch(() => setServerFolders([]));
+  }, []);
 
   // Filter materials based on tab
-  const publicMaterials = mockMaterials.filter(m => m.isPublic && m.authorId !== user?.id);
-  const myMaterials = mockMaterials.filter(m => m.authorId === user?.id);
+  const publicMaterials = serverFolders
+    .filter((f: any) => f.isPublic == true)
+    .map((f: any)  => ({
+      id: String(f.id),
+      code: f.code || '',
+      title: f.name,
+      description: '',
+      authorId: String(f.createdBy?.id || ''),
+      authorName: f.createdBy?.username || '',
+      authorEmail: f.createdBy?.email || '',
+      isPublic: !!f.isPublic,
+      price: Number(f.price) || 0,
+      flashcards: [],
+      quizzes: [],
+      likes: f.voteCount || 0,
+      views: f.totalAttemptCount || 0,
+      comments: [],
+      createdAt: f.createdAt,
+      updatedAt: f.createdAt,
+    } as Material));
+  const myMaterials = serverFolders
+    .filter((f: any)  => String(f.createdBy?.id) === String(user?.id))
+    .map((f: any)  => ({
+      id: String(f.id),
+      code: f.code || '',
+      title: f.name,
+      description: '',
+      authorId: String(f.createdBy?.id || ''),
+      authorName: f.createdBy?.username || '',
+      authorEmail: f.createdBy?.email || '',
+      isPublic: !!f.isPublic,
+      price: Number(f.price) || 0,
+      flashcards: [],
+      quizzes: [],
+      likes: f.voteCount || 0,
+      views: f.totalAttemptCount || 0,
+      comments: [],
+      createdAt: f.createdAt,
+      updatedAt: f.createdAt,
+    } as Material));
+  const serverPublic = serverFolders.filter((f: any)  => f.author?.id !== user?.id).map(f => ({
+    id: String(f.id),
+    code: '',
+    title: f.name,
+    description: f.description || '',
+    authorId: String(f.author?.id || ''),
+    authorName: f.author?.name || '',
+    authorEmail: '',
+    isPublic: true,
+    price: 0,
+    flashcards: [],
+    quizzes: (f.quizzes || []).map((q: any) => ({ id: String(q.id), term: q.title, definition: '' })),
+    likes: f.voteCount || 0,
+    views: f.viewCount || 0,
+    comments: [],
+    createdAt: f.createdAt,
+    updatedAt: f.createdAt,
+  } as Material));
 
   // Filter by search
   const filterMaterials = (materials: Material[]) => {
@@ -200,7 +215,7 @@ function MaterialCard({ material, isOwner }: MaterialCardProps) {
             <CardDescription className="flex items-center gap-2 mt-1">
               <Avatar className="w-5 h-5">
                 <AvatarFallback className="text-xs">
-                  {material.authorName[0].toUpperCase()}
+                  {(material.authorName?.[0] || '?').toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <span className="text-sm">{material.authorEmail}</span>
