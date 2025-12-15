@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
@@ -8,14 +8,18 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../../utils/authStore';
 import { toast } from 'sonner';
 
-export function RegisterPage() {
+export function ResetPasswordPage() {
   const navigate = useNavigate();
-  const { register, isAuthenticated, user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const codeFromUrl = searchParams.get('code');
+  
+  const { changePassword, isAuthenticated } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
   const [formData, setFormData] = useState({
+    code: codeFromUrl || '',
     email: '',
-    username: '',
     password: '',
     confirmPassword: '',
   });
@@ -25,34 +29,23 @@ export function RegisterPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      if (user?.role === 'ADMIN') {
-        navigate('/admin/dashboard', { replace: true });
-      } else {
-        navigate('/courses', { replace: true });
-      }
+      navigate('/courses', { replace: true });
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, navigate]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    // Email validation
+    if (!formData.code) {
+      newErrors.code = 'Mã xác nhận là bắt buộc';
+    }
+
     if (!formData.email) {
       newErrors.email = 'Email là bắt buộc';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Email không hợp lệ';
     }
 
-    // Username validation
-    if (!formData.username) {
-      newErrors.username = 'Username là bắt buộc';
-    } else if (formData.username.length < 5 || formData.username.length > 20) {
-      newErrors.username = 'Username phải từ 5-20 ký tự';
-    } else if (!/^[a-zA-Z0-9]+$/.test(formData.username)) {
-      newErrors.username = 'Username chỉ được chứa chữ và số';
-    }
-
-    // Password validation
     if (!formData.password) {
       newErrors.password = 'Mật khẩu là bắt buộc';
     } else if (formData.password.length < 6) {
@@ -61,7 +54,6 @@ export function RegisterPage() {
       newErrors.password = 'Mật khẩu phải có ít nhất 1 chữ hoa';
     }
 
-    // Confirm password validation
     if (!formData.confirmPassword) {
       newErrors.confirmPassword = 'Xác nhận mật khẩu là bắt buộc';
     } else if (formData.password !== formData.confirmPassword) {
@@ -72,21 +64,20 @@ export function RegisterPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setIsLoading(true);
-
     try {
-      const success = await register(formData.email, formData.username, formData.password);
+      const success = await changePassword(formData.code, {
+        email: formData.email,
+        newPassword: formData.password
+      });
       
       if (success) {
-        toast.success('Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.');
-        navigate('/verify-email');
+        toast.success('Đổi mật khẩu thành công! Vui lòng đăng nhập lại.');
+        navigate('/login');
       }
     } catch (error) {
       toast.error('Đã xảy ra lỗi. Vui lòng thử lại.');
@@ -97,7 +88,6 @@ export function RegisterPage() {
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -107,34 +97,50 @@ export function RegisterPage() {
     }
   };
 
+  if (false) return null; // Removed code check
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/20 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
-        {/* Logo & Welcome */}
         <div className="text-center space-y-4">
           <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto shadow-lg">
             <img src="/app_icon.png" alt="App" className="w-24 h-24" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold">Tham gia CapyVocab</h1>
+            <h1 className="text-3xl font-bold">Đặt lại mật khẩu</h1>
             <p className="text-muted-foreground mt-2">
-              Bắt đầu hành trình học tiếng Anh ngay hôm nay
+              Nhập mật khẩu mới cho tài khoản của bạn
             </p>
           </div>
         </div>
 
-        {/* Register Form */}
         <Card className="shadow-xl border-2">
           <CardHeader>
-            <CardTitle>Tạo tài khoản</CardTitle>
+            <CardTitle>Mật khẩu mới</CardTitle>
             <CardDescription>
-              Điền thông tin của bạn để bắt đầu
+              Hãy chọn một mật khẩu mạnh để bảo vệ tài khoản
             </CardDescription>
           </CardHeader>
-          <form onSubmit={handleRegister}>
+          <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="code">Mã xác nhận *</Label>
+                <Input
+                  id="code"
+                  type="text"
+                  placeholder="Nhập mã xác nhận từ email"
+                  value={formData.code}
+                  onChange={(e) => handleChange('code', e.target.value)}
+                  required
+                  className={errors.code ? 'border-destructive' : ''}
+                />
+                {errors.code && (
+                  <p className="text-xs text-destructive">{errors.code}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email xác nhận *</Label>
                 <Input
                   id="email"
                   type="email"
@@ -150,35 +156,12 @@ export function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="username">Username *</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="username123"
-                  value={formData.username}
-                  onChange={(e) => handleChange('username', e.target.value)}
-                  required
-                  minLength={5}
-                  maxLength={20}
-                  pattern="[a-zA-Z0-9]+"
-                  className={errors.username ? 'border-destructive' : ''}
-                />
-                {errors.username ? (
-                  <p className="text-xs text-destructive">{errors.username}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    5-20 ký tự, chỉ chữ và số
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Mật khẩu *</Label>
+                <Label htmlFor="password">Mật khẩu mới *</Label>
                 <div className="relative">
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Tạo mật khẩu"
+                    placeholder="Mật khẩu mới"
                     value={formData.password}
                     onChange={(e) => handleChange('password', e.target.value)}
                     required
@@ -208,7 +191,7 @@ export function RegisterPage() {
                   <Input
                     id="confirmPassword"
                     type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Xác nhận mật khẩu"
+                    placeholder="Xác nhận mật khẩu mới"
                     value={formData.confirmPassword}
                     onChange={(e) => handleChange('confirmPassword', e.target.value)}
                     required
@@ -226,25 +209,37 @@ export function RegisterPage() {
                   <p className="text-xs text-destructive">{errors.confirmPassword}</p>
                 )}
               </div>
-
             </CardContent>
             <CardFooter className="flex flex-col gap-4 py-4">
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Đang đăng ký...
+                    Đang cập nhật...
                   </>
                 ) : (
-                  'Tạo tài khoản'
+                  'Đổi mật khẩu'
                 )}
               </Button>
-              <p className="text-sm text-center text-muted-foreground">
-                Đã có tài khoản?{' '}
-                <Link to="/login" className="text-primary hover:underline font-medium">
-                  Đăng nhập
-                </Link>
-              </p>
+              <Link 
+                to="/login" 
+                className="text-sm text-center text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-2"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m15 18-6-6 6-6"/>
+                </svg>
+                Quay lại đăng nhập
+              </Link>
             </CardFooter>
           </form>
         </Card>

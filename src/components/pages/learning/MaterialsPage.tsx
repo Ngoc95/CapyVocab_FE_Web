@@ -207,7 +207,7 @@ function MaterialCard({ material, isOwner }: MaterialCardProps) {
   const quizzesCount = material.quizzes.length;
 
   return (
-    <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => navigate(`/materials/${material.id}`)}>
+    <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => navigate(`/materials/${material.id}`, { state: { previewMaterial: material } })}>
       <CardHeader>
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1">

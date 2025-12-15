@@ -105,7 +105,7 @@ export const authService = {
 
   // Send verification email
   sendVerificationEmail: (): Promise<ApiResponse<{}>> => {
-    return apiPost<{}>('/email/send-verification');
+    return apiPost<{}>('/emails/send-verification');
   },
 
   // Verify email
@@ -115,7 +115,7 @@ export const authService = {
 
   // Send change password email
   sendChangePasswordEmail: (data: SendChangePasswordRequest): Promise<ApiResponse<{}>> => {
-    return apiPost<{}>('/email/change-password', data);
+    return apiPost<{}>('/emails/change-password', data);
   },
 
   // Change password

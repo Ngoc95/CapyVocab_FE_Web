@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Heart, Eye, Code, Edit, AlertTriangle, MessageSquare, Play, FileText, Lock, ShoppingCart } from 'lucide-react';
-import { Button } from '../../ui/button';
+import { useNavigate, useParams, useLocation } from 'react-router';
+import { ArrowLeft, Heart, Eye, Code, Edit, AlertTriangle, MessageSquare, Play, FileText, Lock, ShoppingCart, Loader2, XCircle, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { Badge } from '../../ui/badge';
@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '../../../utils/authStore';
 import type { Material, Comment } from '../../../types';
 import { exerciseService } from '../../../services/exerciseService';
+import { paymentService } from '../../../services/paymentService';
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -60,20 +61,50 @@ const mockMaterial: Material = {
 export function MaterialDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuthStore();
   
-  const [material, setMaterial] = useState<Material>(mockMaterial);
+  const [material, setMaterial] = useState<Material | null>(null);
   const [isLiked, setIsLiked] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [reportReason, setReportReason] = useState('');
   const [showPayment, setShowPayment] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Get preview material from location state if available
+  const previewMaterial = location.state?.previewMaterial as Material | undefined;
 
   useEffect(() => {
     const folderId = Number(id);
     if (!folderId) return;
-    exerciseService.getFolderById(folderId)
-      .then((res) => {
+
+    const fetchMaterial = async () => {
+      try {
+        setError(null);
+        // 1. Get folder details
+        const res = await exerciseService.getFolderById(folderId);
         const f = res.metaData;
+        
+        // 2. Check purchase status if needed
+        let isPurchased = false;
+        // Logic to check purchase status will be here based on API response or additional check
+        // Assuming f.isPurchased or similar field exists, otherwise check order status
+        
+        if (user && f.price > 0 && String(f.createdBy?.id) !== String(user.id)) {
+           try {
+             const statusRes = await paymentService.checkOrderStatus(folderId);
+             if (statusRes.metaData && statusRes.metaData.status === 'SUCCESS') {
+               isPurchased = true;
+             } else if (statusRes.metaData && statusRes.metaData.status === 'PENDING') {
+                setPendingOrder(statusRes.metaData);
+             }
+           } catch (err) {
+             console.error('Failed to check order status', err);
+           }
+        }
+
         const mapped: Material = {
           id: String(f.id),
           code: f.code || '',
@@ -89,15 +120,67 @@ export function MaterialDetailPage() {
           likes: f.voteCount || 0,
           views: f.totalAttemptCount || 0,
           comments: [],
-          isPurchased: true,
+          isPurchased: isPurchased, // Use the checked status
           createdAt: f.createdAt,
           updatedAt: f.createdAt,
         };
         setMaterial(mapped);
         setIsLiked(!!f.isAlreadyVote);
-      })
-      .catch(() => {});
-  }, [id]);
+      } catch (error: any) {
+        console.error('Failed to load material', error);
+        
+        // If we have preview material from navigation state, use it to show payment dialog
+        if (previewMaterial) {
+            // Check order status even if getFolder failed, in case user already bought it but API is weird
+            if (user) {
+                try {
+                     const statusRes = await paymentService.checkOrderStatus(folderId);
+                     if (statusRes.metaData && statusRes.metaData.status === 'SUCCESS') {
+                       // If purchased but getFolder failed, it's a real error
+                       setError(error?.message || 'Không thể tải nội dung học liệu');
+                       return;
+                     } else if (statusRes.metaData && statusRes.metaData.status === 'PENDING') {
+                        setPendingOrder(statusRes.metaData);
+                     }
+                } catch {}
+            }
+            
+            setMaterial({
+                ...previewMaterial,
+                isPurchased: false // Force false to show payment dialog
+            });
+            setShowPayment(true); // Auto open payment dialog
+        } else {
+             setError(error?.message || 'Không thể tải thông tin học liệu');
+        }
+      }
+    };
+
+    fetchMaterial();
+  }, [id, user, previewMaterial]);
+
+  if (error) {
+     return (
+        <div className="min-h-screen bg-background flex items-center justify-center">
+            <div className="text-center">
+                <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-4" />
+                <h2 className="text-xl font-semibold mb-2">Không thể truy cập học liệu</h2>
+                <p className="text-muted-foreground mb-4">{error}</p>
+                <Button onClick={() => navigate('/materials')}>
+                    Quay lại danh sách
+                </Button>
+            </div>
+        </div>
+     )
+  }
+
+  if (!material) {
+      return (
+          <div className="min-h-screen bg-background flex items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+      )
+  }
 
   const isOwner = String(material.authorId) === String(user?.id || '');
   const needsPurchase = material.price > 0 && !material.isPurchased && !isOwner;
@@ -147,11 +230,41 @@ export function MaterialDetailPage() {
     toast.success('Đã gửi báo cáo vi phạm. Admin sẽ xem xét trong thời gian sớm nhất.');
   };
 
-  const handlePurchase = () => {
-    // Mock payment
-    setMaterial({ ...material, isPurchased: true });
-    setShowPayment(false);
-    toast.success('Thanh toán thành công! Bạn có thể truy cập học liệu ngay bây giờ.');
+  const handlePurchase = async () => {
+    setIsProcessingPayment(true);
+    try {
+      const res = await paymentService.createOrder(Number(material.id));
+      const { order, orderUrl } = res.metaData;
+
+      if (material.price === 0) {
+        // Free material
+        setMaterial({ ...material, isPurchased: true });
+        setShowPayment(false);
+        toast.success('Đăng ký học liệu miễn phí thành công!');
+      } else if (orderUrl) {
+        // Paid material - redirect to VNPay
+        window.location.assign(orderUrl);
+      } else {
+         toast.error('Không tìm thấy đường dẫn thanh toán. Vui lòng thử lại sau.');
+      }
+    } catch (error) {
+      console.error('Purchase failed', error);
+      toast.error('Có lỗi xảy ra khi tạo đơn hàng. Vui lòng thử lại.');
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+  
+  const handleCancelOrder = async () => {
+      if (!pendingOrder) return;
+      try {
+          await paymentService.cancelOrder(pendingOrder.id);
+          setPendingOrder(null);
+          toast.success('Đã hủy đơn hàng chờ thanh toán.');
+      } catch (error) {
+          console.error('Cancel order failed', error);
+          toast.error('Không thể hủy đơn hàng. Vui lòng thử lại.');
+      }
   };
 
   const handleStartFlashcards = () => {
@@ -337,10 +450,29 @@ export function MaterialDetailPage() {
                 )}
               </div>
               {needsPurchase && (
-                <Button size="lg" onClick={() => setShowPayment(true)}>
-                  <ShoppingCart className="w-4 h-4 mr-2" />
-                  Mua ngay - {material.price.toLocaleString()}đ
-                </Button>
+                <div className="flex gap-2">
+                   {pendingOrder ? (
+                        <div className="flex items-center gap-2">
+                             <div className="text-right mr-2">
+                                <p className="font-semibold text-yellow-600">Đơn hàng đang chờ</p>
+                                <p className="text-xs text-muted-foreground">Vui lòng hoàn tất thanh toán</p>
+                             </div>
+                             <Button variant="outline" size="lg" onClick={handleCancelOrder}>
+                                <XCircle className="w-4 h-4 mr-2" />
+                                Hủy đơn
+                             </Button>
+                             <Button size="lg" onClick={() => window.location.assign(pendingOrder.orderUrl || '')} disabled={!pendingOrder.orderUrl}>
+                                <Clock className="w-4 h-4 mr-2" />
+                                Thanh toán tiếp
+                             </Button>
+                        </div>
+                   ) : (
+                    <Button size="lg" onClick={() => setShowPayment(true)}>
+                      <ShoppingCart className="w-4 h-4 mr-2" />
+                      Mua ngay - {material.price.toLocaleString()}đ
+                    </Button>
+                   )}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -477,10 +609,11 @@ export function MaterialDetailPage() {
               </p>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowPayment(false)}>
+              <Button variant="outline" onClick={() => setShowPayment(false)} disabled={isProcessingPayment}>
                 Hủy
               </Button>
-              <Button onClick={handlePurchase}>
+              <Button onClick={handlePurchase} disabled={isProcessingPayment}>
+                {isProcessingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Xác nhận thanh toán
               </Button>
             </DialogFooter>

@@ -4,6 +4,9 @@ import { AdminLayout } from '../components/layouts/AdminLayout';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { LoginPage } from '../components/pages/auth/LoginPage';
 import { RegisterPage } from '../components/pages/auth/RegisterPage';
+import { ForgotPasswordPage } from '../components/pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '../components/pages/auth/ResetPasswordPage';
+import { VerifyEmailPage } from '../components/pages/auth/VerifyEmailPage';
 import { CoursesPage } from '../components/pages/learning/CoursesPage';
 import { CourseDetailPage } from '../components/pages/learning/CourseDetailPage';
 import { TopicDetailPage } from '../components/pages/learning/TopicDetailPage';
@@ -29,6 +32,7 @@ import { AdminWithdrawPage } from '../components/pages/admin/AdminWithdrawPage';
 import { AdminReportsPage } from '../components/pages/admin/AdminReportsPage';
 import { AdminSupportPage } from '../components/pages/admin/AdminSupportPage';
 import { NotFoundPage } from '../components/pages/NotFoundPage';
+import { PaymentCallbackPage } from '../components/pages/payment/PaymentCallbackPage';
 
 export const router = createBrowserRouter([
   // Redirect root to courses (protected)
@@ -45,6 +49,22 @@ export const router = createBrowserRouter([
   {
     path: '/register',
     Component: RegisterPage,
+  },
+  {
+    path: '/forgot-password',
+    Component: ForgotPasswordPage,
+  },
+  {
+    path: '/reset-password',
+    Component: ResetPasswordPage,
+  },
+  {
+    path: '/verify-email',
+    Component: VerifyEmailPage,
+  },
+  {
+    path: '/payment/callback',
+    Component: PaymentCallbackPage,
   },
   
   // Learning site routes (with LearningLayout) - Protected
