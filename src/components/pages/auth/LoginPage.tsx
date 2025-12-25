@@ -1,28 +1,40 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { Button } from '../../ui/button';
-import { Input } from '../../ui/input';
-import { Label } from '../../ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../ui/card';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
-import { useAuthStore } from '../../../utils/authStore';
-import { toast } from 'sonner';
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router";
+import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../../ui/card";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { useAuthStore } from "../../../utils/authStore";
+import { toast } from "sonner";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login, googleLogin: loginWithGoogle, isAuthenticated, user } = useAuthStore();
+  const {
+    login,
+    googleLogin: loginWithGoogle,
+    isAuthenticated,
+    user,
+  } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      if (user?.role === 'ADMIN') {
-        navigate('/admin/dashboard', { replace: true });
+      if (user?.role === "ADMIN") {
+        navigate("/admin/dashboard", { replace: true });
       } else {
-        navigate('/courses', { replace: true });
+        navigate("/courses", { replace: true });
       }
     }
   }, [isAuthenticated, user, navigate]);
@@ -33,13 +45,13 @@ export function LoginPage() {
 
     try {
       const success = await login(username, password);
-      
+
       if (success) {
-        toast.success('Đăng nhập thành công!');
+        toast.success("Đăng nhập thành công!");
         // Navigation is handled by useEffect
       }
     } catch (error) {
-      toast.error('Đã xảy ra lỗi. Vui lòng thử lại.');
+      toast.error("Đã xảy ra lỗi. Vui lòng thử lại.");
     } finally {
       setIsLoading(false);
     }
@@ -53,21 +65,21 @@ export function LoginPage() {
         setIsLoading(true);
         const success = await loginWithGoogle(response.credential);
         if (success) {
-          toast.success('Đăng nhập Google thành công!');
+          toast.success("Đăng nhập Google thành công!");
         }
         setIsLoading(false);
       }
     } catch (error) {
-      console.error('Google login error:', error);
-      toast.error('Đăng nhập Google thất bại');
+      console.error("Google login error:", error);
+      toast.error("Đăng nhập Google thất bại");
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
     // Load Google Sign-In script
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.defer = true;
     script.onload = () => {
@@ -76,13 +88,13 @@ export function LoginPage() {
       if (window.google) {
         // @ts-ignore
         window.google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '', // Make sure this is in .env
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || "", // Make sure this is in .env
           callback: handleGoogleLogin,
         });
         // @ts-ignore
         window.google.accounts.id.renderButton(
-          document.getElementById('google-signin-button'),
-          { theme: 'outline', size: 'large', width: '100%' }
+          document.getElementById("google-signin-button"),
+          { theme: "outline", size: "large", width: "100%" }
         );
       }
     };
@@ -127,7 +139,6 @@ export function LoginPage() {
                   placeholder="username123"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  required
                   minLength={5}
                   maxLength={20}
                 />
@@ -140,11 +151,10 @@ export function LoginPage() {
                 <div className="relative">
                   <Input
                     id="password"
-                    type={showPassword ? 'text' : 'password'}
+                    type={showPassword ? "text" : "password"}
                     placeholder="Nhập mật khẩu"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required
                     minLength={6}
                   />
                   <button
@@ -152,13 +162,17 @@ export function LoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
               </div>
               <div className="flex items-center justify-end">
-                <Link 
-                  to="/forgot-password" 
+                <Link
+                  to="/forgot-password"
                   className="text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
                   Quên mật khẩu?
@@ -173,12 +187,15 @@ export function LoginPage() {
                     Đang đăng nhập...
                   </>
                 ) : (
-                  'Đăng nhập'
+                  "Đăng nhập"
                 )}
               </Button>
               <p className="text-sm text-center text-muted-foreground">
-                Chưa có tài khoản?{' '}
-                <Link to="/register" className="text-primary hover:underline font-medium">
+                Chưa có tài khoản?{" "}
+                <Link
+                  to="/register"
+                  className="text-primary hover:underline font-medium"
+                >
                   Đăng ký
                 </Link>
               </p>
@@ -192,7 +209,9 @@ export function LoginPage() {
             <div className="w-full border-t"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-background text-muted-foreground">Hoặc tiếp tục với</span>
+            <span className="px-2 bg-background text-muted-foreground">
+              Hoặc tiếp tục với
+            </span>
           </div>
         </div>
 
