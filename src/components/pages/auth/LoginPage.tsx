@@ -155,7 +155,6 @@ export function LoginPage() {
                     placeholder="Nhập mật khẩu"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    minLength={6}
                   />
                   <button
                     type="button"
